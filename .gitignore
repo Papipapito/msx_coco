@@ -1,0 +1,15 @@
+# Intermedios de compilación (MSXgl / SDCC)
+out/
+*.rel
+*.ihx
+*.lk
+*.map
+*.sym
+*.lst
+*.noi
+*.rst
+
+# Capturas / logs temporales de verificación con openMSX
+tools/*.png
+tools/omsx_*.txt
+tools/*.log
