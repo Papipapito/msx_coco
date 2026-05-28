@@ -1,0 +1,49 @@
+name: Release ROM
+
+# Se dispara al publicar un tag de versión (p. ej. v0.0.2-beta) o manualmente.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag/versión a publicar (ej. v0.0.2-beta)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Compilar ROM y publicar release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clonar MSXgl (shallow)
+        run: git clone --depth 1 https://github.com/aoineko-fr/MSXgl.git /tmp/MSXgl
+
+      - name: Compilar msx_coco.rom
+        run: |
+          sed -i 's/\r$//' build.sh
+          MSXGL=/tmp/MSXgl bash build.sh
+
+      - name: Comprobar que el ROM existe
+        run: test -f msx_coco.rom && ls -l msx_coco.rom
+
+      - name: Crear / actualizar release con el ROM
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: MSX COCO ${{ inputs.tag || github.ref_name }}
+          body: |
+            ROM de **MSX COCO** `${{ inputs.tag || github.ref_name }}` para **MSX2+** (chip V9958).
+
+            Carga `msx_coco.rom` como cartucho en un emulador con V9958 (openMSX, blueMSX) o en hardware real.
+            Controles: cursores del teclado o joystick del puerto 1; `ESC` para salir.
+
+            Ver el [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/docs/CHANGELOG.md) y el [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+          files: msx_coco.rom
+          prerelease: ${{ contains(inputs.tag || github.ref_name, 'beta') || contains(inputs.tag || github.ref_name, 'alpha') || contains(inputs.tag || github.ref_name, 'rc') }}
+          generate_release_notes: true

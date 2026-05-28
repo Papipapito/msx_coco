@@ -54,6 +54,22 @@ wsl -d Ubuntu-22.04 bash -c "cd /mnt/c/Users/alber/msx_coco && MSXGL=\$HOME/MSXg
 `build.sh` copia los fuentes al árbol de MSXgl, compila y devuelve `msx_coco.rom`
 (32 KB, `ROM_32K`) a la carpeta del proyecto.
 
+## Publicar una versión (CI)
+
+El repositorio incluye un workflow de GitHub Actions
+([.github/workflows/release.yml](.github/workflows/release.yml)) que **compila la
+ROM en la nube y publica un release automáticamente** al subir un tag de versión:
+
+```bash
+git tag v0.0.2-beta
+git push origin v0.0.2-beta
+```
+
+El workflow clona MSXgl, compila `msx_coco.rom` y crea el release con la ROM
+adjunta (marcado como *pre-release* si el tag contiene `beta`/`alpha`/`rc`).
+También puede lanzarse a mano desde la pestaña *Actions* o con
+`gh workflow run "Release ROM" -f tag=v0.0.2-beta`.
+
 ## Estructura del proyecto
 
 ```
