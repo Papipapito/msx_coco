@@ -136,6 +136,17 @@ import math
 
 def grid(img): return [[1 if c == '#' else 0 for c in row] for row in img]
 
+# Fantasma "cool" (gafas de sol para el erratico): visor = banda transparente
+# ANCHA que cruza ambos ojos (filas 5-6) + patillas de 1 px hasta los bordes
+# del cuerpo (fila 4). Los huecos transparentes sobre el pasillo negro se ven
+# negros = gafas. El faldon (A/B) se hereda del frame base.
+def ghost_cool(base_img):
+    g = [row[:] for row in grid(base_img)]
+    g[4] = grid(["....########...."])[0]
+    g[5] = grid([".##..........##."])[0]
+    g[6] = grid([".##..........##."])[0]
+    return g
+
 # Animacion de muerte: colapso "hacia arriba" recortando el disco base por
 # angulo (semiapertura respecto al vector ARRIBA). D4 = chispa final en cruz.
 def death_frames():
@@ -394,6 +405,8 @@ print("")
 emit("g_PacHalfPattern", pac_half)
 print("")
 emit("g_FrightPattern", fright)
+print("")
+emit("g_CoolPattern", [("COOL_A", ghost_cool(ghost_a)), ("COOL_B", ghost_cool(ghost_b))])
 print("")
 emit("g_DeathPattern", death_frames())
 print("")
