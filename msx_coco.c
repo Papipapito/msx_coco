@@ -28,9 +28,47 @@
 #define SCREEN_TILE_W 32              // columnas visibles (= ancho del name table)
 #define MAX_SCROLL    ((TILE_COLS - SCREEN_TILE_W) * 8) // 256 px de recorrido
 
-#define PAC_SPEED     1
-#define ENEMY_SPEED   1
+#define PAC_SPEED     2               // px/frame (wakka a (anim>>1)&3: 8 frames/celda)
+#define GHOST_SPEED   2               // px/frame, con frame-skip (GhostMoves)
 #define CAM_CENTER    ((SCREEN_W / 2) - (CELL / 2)) // 120
+
+//=============================================================================
+// ENTIDADES Y ESTADOS
+//=============================================================================
+
+#define NUM_GHOSTS    3
+#define GH_RED        0               // perseguidor (Blinky)
+#define GH_PINK       1               // emboscador (Pinky)
+#define GH_CYAN       2               // erratico (Inky)
+
+// Estados de fantasma
+#define GST_PARKED    0               // en spawn, aun no liberado
+#define GST_NORMAL    1
+#define GST_FRIGHT    2
+#define GST_EATEN     3               // pausa oculto en spawn tras ser comido
+
+// FSM de juego
+#define ST_TITLE      0
+#define ST_READY      1
+#define ST_PLAY       2
+#define ST_DYING      3
+#define ST_LEVELCLEAR 4
+#define ST_GAMEOVER   5
+
+// Puntos
+#define PTS_DOT       1
+#define PTS_PELLET    5
+#define PTS_GHOST_BASE 20             // 20/40/80/160 con la cadena (cap 9999)
+
+#define LIVES_START   3
+
+// Mapa de sprites (indice SAT); el HUD vive en y=255 => lineas 0..15, nunca
+// comparte linea fisica con pac/fantasmas (el area jugable empieza en y=16)
+#define SPRT_PAC      0
+#define SPRT_GHOST    1               // 1..3
+#define SPRT_DIGIT    4               // 4..7 marcador
+#define SPRT_LIFE     8               // 8..10 vidas
+#define SPRT_LETTER   11              // 11..18 banners (READY!/GAME OVER/logo)
 
 //=============================================================================
 // TILES — bloque unico de indices (DESIGN_v020 1.1). Todo el codigo usa estos
@@ -241,11 +279,12 @@ u16 g_Score;                         // puntuacion acumulada entre niveles
 u16 g_PacX, g_PacY;
 u8  g_PacDir, g_PacWantDir, g_PacAnim;
 
-u16 g_EnX, g_EnY;
-u8  g_EnDir, g_EnAnim;
-
-u8  g_Sprt, g_EnSprt;
-u8  g_DigSprt[4];  // 4 sprites de digito del marcador (indices 2..5)
+// Fantasmas: arrays paralelos (SoA), indexados por GH_*
+u16 g_GhX[NUM_GHOSTS], g_GhY[NUM_GHOSTS];
+u8  g_GhDir[NUM_GHOSTS];
+u8  g_GhState[NUM_GHOSTS];   // GST_*
+u8  g_GhTimer[NUM_GHOSTS];   // PARKED: frames hasta liberacion / EATEN: pausa
+u8  g_GhAnim;                // compartido: alterna shape A/B de los 3
 
 u16 g_CameraX;     // posicion de camara en el mundo (px), 0..MAX_SCROLL
 u16 g_DrawnLeft;   // columna de tile del mundo en el borde izquierdo del name table
@@ -260,6 +299,18 @@ u8  g_HasFM;       // TRUE if any YM2413 present
 u8  g_FMType;      // MSXMUSIC_NOTFOUND / _INTERNAL / _EXTERNAL
 
 const u8 g_AllDir[4] = { DIR_RIGHT, DIR_LEFT, DIR_UP, DIR_DOWN };
+
+// Vectores unitarios por direccion (indexados por DIR_*; DIR_NONE = (0,0))
+const i8 g_DirDX[5] = { 0, 1, -1, 0, 0 };
+const i8 g_DirDY[5] = { 0, 0, 0, -1, 1 };
+
+// Spawns de fantasma (celda) y liberacion escalonada en frames tras entrar en
+// PLAY. Garantizados camino por construccion: fila impar = corredor, columna
+// MAZE_COLS-2 = calle lateral.
+const u8 g_GhSpawnCX[NUM_GHOSTS] = { 30, 30, 30 };
+const u8 g_GhSpawnCY[NUM_GHOSTS] = { 9, 5, 1 };
+const u8 g_GhRelease[NUM_GHOSTS] = { 0, 120, 240 };
+const u8 g_GhColor[NUM_GHOSTS]   = { COLOR_LIGHT_RED, COLOR_MAGENTA, COLOR_CYAN };
 
 //=============================================================================
 // LABERINTO
@@ -516,24 +567,63 @@ u8 Opposite(u8 dir)
 // MARCADOR (4 digitos de puntuacion, sprites de posicion FIJA en pantalla)
 //=============================================================================
 
-// Actualiza solo el PATRON de los 4 sprites de digito (su posicion es fija,
-// no depende de la camara). Muestra g_Score con 4 cifras (millares..unidades).
-void ShowScore()
+// Muestra un valor de 4 cifras en los sprites de digito (patrones solamente;
+// la posicion es fija). Compartido por marcador y hi-score (GAMEOVER alterna).
+void ShowValue4(u16 v)
 {
-	u16 v = g_Score;
 	u16 div = 1000;
 	for (u8 i = 0; i < 4; ++i)
 	{
 		u8 d = (u8)(v / div);
 		v -= (u16)d * div;
 		div /= 10;
-		VDP_SetSpritePattern(g_DigSprt[i], SH_DIGIT + d * 4);
+		VDP_SetSpritePattern(SPRT_DIGIT + i, SH_DIGIT + d * 4);
 	}
+}
+
+// Actualiza solo el PATRON de los 4 sprites de digito (su posicion es fija,
+// no depende de la camara). Muestra g_Score con 4 cifras (millares..unidades).
+void ShowScore()
+{
+	ShowValue4(g_Score);
+}
+
+// Suma puntos con tope de 9999 (el marcador es de 4 digitos) y refresca
+void AddScore(u8 pts)
+{
+	g_Score += pts;
+	if (g_Score > 9999)
+		g_Score = 9999;
+	ShowScore();
 }
 
 //=============================================================================
 // NIVEL
 //=============================================================================
+
+// Recoloca pac y fantasmas en sus spawns (nuevo nivel o respawn tras muerte):
+// pac a (1,1), fantasmas PARKED con liberacion escalonada y colores de
+// personalidad, camara a 0 (InitScroll re-vuelca las 32 columnas).
+void ResetPositions()
+{
+	g_PacX = CELL;
+	g_PacY = CELL;
+	g_PacDir = DIR_NONE;
+	g_PacWantDir = DIR_NONE;
+
+	for (u8 i = 0; i < NUM_GHOSTS; ++i)
+	{
+		g_GhX[i] = (u16)g_GhSpawnCX[i] * CELL;
+		g_GhY[i] = (u16)g_GhSpawnCY[i] * CELL;
+		g_GhDir[i] = DIR_LEFT;
+		g_GhState[i] = GST_PARKED;
+		g_GhTimer[i] = g_GhRelease[i];
+		VDP_SetSpriteUniColor(SPRT_GHOST + i, g_GhColor[i]);
+	}
+
+	UpdateCamera();
+	InitScroll();
+}
 
 // Genera un nuevo nivel con mapa aleatorio y reinicia personajes. NO resetea
 // la puntuacion (g_Score es acumulativa entre niveles).
@@ -545,21 +635,7 @@ void NextLevel()
 	PlaceDots();
 	BuildTileMap();
 	ApplyTheme(g_Level);
-
-	// Reinicia el comecocos en la celda (1,1) (siempre camino por construccion)
-	g_PacX = CELL;
-	g_PacY = CELL;
-	g_PacDir = DIR_NONE;
-	g_PacWantDir = DIR_NONE;
-
-	// Reinicia el enemigo en una celda de camino lejana (fila impar = corredor)
-	g_EnX = (MAZE_COLS - 2) * CELL;
-	g_EnY = 5 * CELL;
-	g_EnDir = DIR_LEFT;
-
-	g_CameraX = 0;
-	g_DrawnLeft = 0;
-	InitScroll();
+	ResetPositions();
 }
 
 //=============================================================================
@@ -672,7 +748,7 @@ void UpdatePac()
 		{
 			g_DotMap[di] = 0;
 			g_DotsLeft--;
-			g_Score++;
+			AddScore(PTS_DOT);
 			SfxEat();
 			u16 base = ((u16)(cy * 2)) * TILE_COLS + (cx * 2);
 			// Limpia los 4 sub-tiles del punto en el mapa logico
@@ -681,7 +757,6 @@ void UpdatePac()
 			g_TileMap[base + TILE_COLS]     = T_PATH;
 			g_TileMap[base + TILE_COLS + 1] = T_PATH;
 			EraseDotOnScreen(cx, cy);
-			ShowScore();
 			if (g_DotsLeft == 0)
 				NextLevel();
 		}
@@ -732,73 +807,178 @@ void DrawPac()
 	u8 shape = SH_CLOSED;
 	if (g_PacDir != DIR_NONE)
 	{
-		// Ciclo de 4 fases (4 frames/fase) = un wakka completo por celda:
-		// cerrado -> medio -> abierto -> medio
-		u8 phase = (g_PacAnim >> 2) & 3;
+		// Ciclo de 4 fases (2 frames/fase a PAC_SPEED=2) = un wakka completo
+		// por celda: cerrado -> medio -> abierto -> medio
+		u8 phase = (g_PacAnim >> 1) & 3;
 		if (phase == 2)
 			shape = ShapeForDir(g_PacDir);
 		else if ((phase == 1) || (phase == 3))
 			shape = HalfForDir(g_PacDir);
 		// phase == 0 -> SH_CLOSED
 	}
-	VDP_SetSpritePattern(g_Sprt, shape);
-	VDP_SetSpritePosition(g_Sprt, (u8)(g_PacX - g_CameraX), (u8)g_PacY);
+	VDP_SetSpritePattern(SPRT_PAC, shape);
+	VDP_SetSpritePosition(SPRT_PAC, (u8)(g_PacX - g_CameraX), (u8)g_PacY);
 }
 
 //=============================================================================
-// ENEMIGO (movimiento aleatorio, sin colision con el comecocos)
+// FANTASMAS: IA por personalidad, liberacion escalonada y frame-skip
 //=============================================================================
 
-void UpdateEnemy()
+// Distancia manhattan en espacio de celda (rangos <= 32+12: cabe en u8)
+u8 CellDist(i8 x, i8 y, i8 tx, i8 ty)
 {
-	if (((g_EnX % CELL) == 0) && ((g_EnY % CELL) == 0))
+	i8 dx = x - tx;
+	if (dx < 0)
+		dx = -dx;
+	i8 dy = y - ty;
+	if (dy < 0)
+		dy = -dy;
+	return (u8)dx + (u8)dy;
+}
+
+// Frame-skip que mantiene la alineacion %16: el paso es SIEMPRE de 2 px y el
+// skip omite el frame entero, asi que la fase de celda no se corrompe nunca.
+bool GhostMoves(u8 i)
+{
+	if (g_GhState[i] == GST_FRIGHT)
+		return (g_Frame & 1) == 0;          // 50%
+	if (g_Level >= 5)
+		return TRUE;                        // 100%
+	if (g_Level >= 3)
+		return (g_Frame & 15) != 15;        // ~94%
+	return (g_Frame & 7) != 7;              // ~87.5% (base)
+}
+
+// Eleccion de direccion en celda alineada. Candidatos: != opuesta y con paso
+// libre; en callejon se permite la vuelta atras (igual que el enemigo v1).
+void ChooseDir(u8 i)
+{
+	u8 cx = (u8)(g_GhX[i] / CELL);
+	u8 cy = (u8)(g_GhY[i] / CELL);
+	u8 cand[4];
+	u8 n = 0;
+	u8 opp = Opposite(g_GhDir[i]);
+	for (u8 k = 0; k < 4; ++k)
 	{
-		u8 cx = (u8)(g_EnX / CELL);
-		u8 cy = (u8)(g_EnY / CELL);
-		u8 cand[4];
-		u8 n = 0;
-		u8 opp = Opposite(g_EnDir);
-		for (u8 i = 0; i < 4; ++i)
+		u8 d = g_AllDir[k];
+		if ((d != opp) && CanMove(cx, cy, d))
+			cand[n++] = d;
+	}
+	if (n == 0)
+	{
+		for (u8 k = 0; k < 4; ++k)
 		{
-			u8 d = g_AllDir[i];
-			if ((d != opp) && CanMove(cx, cy, d))
+			u8 d = g_AllDir[k];
+			if (CanMove(cx, cy, d))
 				cand[n++] = d;
 		}
 		if (n == 0)
 		{
-			for (u8 i = 0; i < 4; ++i)
-			{
-				u8 d = g_AllDir[i];
-				if (CanMove(cx, cy, d))
-					cand[n++] = d;
-			}
+			g_GhDir[i] = DIR_NONE;
+			return;
 		}
-		if (n > 0)
-			g_EnDir = cand[Math_GetRandomMax8(n)];
-		else
-			g_EnDir = DIR_NONE;
 	}
-	switch (g_EnDir)
+
+	if ((g_GhState[i] != GST_FRIGHT) && (i == GH_CYAN))
 	{
-	case DIR_RIGHT: g_EnX += ENEMY_SPEED; break;
-	case DIR_LEFT:  g_EnX -= ENEMY_SPEED; break;
-	case DIR_UP:    g_EnY -= ENEMY_SPEED; break;
-	case DIR_DOWN:  g_EnY += ENEMY_SPEED; break;
+		// Erratico: candidata aleatoria
+		g_GhDir[i] = cand[Math_GetRandomMax8(n)];
+		return;
+	}
+
+	// Celda objetivo segun personalidad (frightened: huir del pac)
+	i8 tx = (i8)(g_PacX / CELL);
+	i8 ty = (i8)(g_PacY / CELL);
+	if ((g_GhState[i] != GST_FRIGHT) && (i == GH_PINK))
+	{
+		// Emboscador: 4 celdas por delante del pac (parado: el propio pac)
+		tx += 4 * g_DirDX[g_PacDir];
+		ty += 4 * g_DirDY[g_PacDir];
+		if (tx < 0) tx = 0; else if (tx > MAZE_COLS - 1) tx = MAZE_COLS - 1;
+		if (ty < 0) ty = 0; else if (ty > MAZE_ROWS - 1) ty = MAZE_ROWS - 1;
+	}
+
+	u8 dist[4];
+	for (u8 k = 0; k < n; ++k)
+	{
+		u8 d = cand[k];
+		dist[k] = CellDist((i8)cx + g_DirDX[d], (i8)cy + g_DirDY[d], tx, ty);
+	}
+
+	if (g_GhState[i] == GST_FRIGHT)
+	{
+		// MAXIMIZA la distancia; empate -> aleatoria entre las empatadas
+		u8 best = 0;
+		for (u8 k = 1; k < n; ++k)
+			if (dist[k] > dist[best])
+				best = k;
+		u8 tied[4];
+		u8 ties = 0;
+		for (u8 k = 0; k < n; ++k)
+			if (dist[k] == dist[best])
+				tied[ties++] = k;
+		g_GhDir[i] = cand[tied[Math_GetRandomMax8(ties)]];
+	}
+	else
+	{
+		// MINIMIZA; el primer candidato del orden fijo gana (determinista)
+		u8 best = 0;
+		for (u8 k = 1; k < n; ++k)
+			if (dist[k] < dist[best])
+				best = k;
+		g_GhDir[i] = cand[best];
 	}
 }
 
-void DrawEnemy()
+void UpdateGhosts()
 {
-	g_EnAnim++;
-	i16 sx = (i16)g_EnX - (i16)g_CameraX;
-	if ((sx < 0) || (sx > 255))
+	for (u8 i = 0; i < NUM_GHOSTS; ++i)
 	{
-		VDP_HideSprite(g_EnSprt);
-		return;
+		if (g_GhState[i] == GST_PARKED)
+		{
+			// Visible y quieto en spawn hasta que expire su liberacion
+			if (g_GhTimer[i] > 0)
+			{
+				g_GhTimer[i]--;
+				continue;
+			}
+			g_GhState[i] = GST_NORMAL;
+			g_GhDir[i] = DIR_LEFT;
+		}
+		if (!GhostMoves(i))
+			continue;
+		// ChooseDir SOLO en frames en que se mueve: evita re-rolls del
+		// erratico parado en celda alineada (la posicion no cambia si no anda)
+		if (((g_GhX[i] % CELL) == 0) && ((g_GhY[i] % CELL) == 0))
+			ChooseDir(i);
+		switch (g_GhDir[i])
+		{
+		case DIR_RIGHT: g_GhX[i] += GHOST_SPEED; break;
+		case DIR_LEFT:  g_GhX[i] -= GHOST_SPEED; break;
+		case DIR_UP:    g_GhY[i] -= GHOST_SPEED; break;
+		case DIR_DOWN:  g_GhY[i] += GHOST_SPEED; break;
+		}
 	}
-	u8 shape = ((g_EnAnim >> 3) & 1) ? (SH_GHOST + 4) : SH_GHOST;
-	VDP_SetSpritePattern(g_EnSprt, shape);
-	VDP_SetSpritePosition(g_EnSprt, (u8)sx, (u8)g_EnY);
+}
+
+void DrawGhosts()
+{
+	g_GhAnim++;
+	u8 alt = (g_GhAnim >> 3) & 1;
+	for (u8 i = 0; i < NUM_GHOSTS; ++i)
+	{
+		if (g_GhState[i] == GST_EATEN)
+			continue;                    // oculto (ya escondido al comerlo)
+		i16 sx = (i16)g_GhX[i] - (i16)g_CameraX;
+		if ((sx < 0) || (sx > 255))
+		{
+			// Fuera de la ventana horizontal visible: ocultar (no envolver)
+			VDP_HideSprite(SPRT_GHOST + i);
+			continue;
+		}
+		VDP_SetSpritePattern(SPRT_GHOST + i, alt ? (SH_GHOST + 4) : SH_GHOST);
+		VDP_SetSpritePosition(SPRT_GHOST + i, (u8)sx, (u8)g_GhY[i]);
+	}
 }
 
 //=============================================================================
@@ -889,23 +1069,8 @@ void main()
 	PlaceDots();
 	BuildTileMap();
 
-	g_PacX = CELL;
-	g_PacY = CELL;
-	g_PacDir = DIR_NONE;
-	g_PacWantDir = DIR_NONE;
 	g_PacAnim = 0;
-
-	g_EnX = 13 * CELL;
-	g_EnY = 5 * CELL;
-	g_EnDir = DIR_LEFT;
-	g_EnAnim = 0;
-
-	g_Sprt = 0;
-	g_EnSprt = 1;
-	g_DigSprt[0] = 2;
-	g_DigSprt[1] = 3;
-	g_DigSprt[2] = 4;
-	g_DigSprt[3] = 5;
+	g_GhAnim = 0;
 
 	VDP_EnableSprite(TRUE);
 	VDP_SetSpriteFlag(VDP_SPRITE_SIZE_16 | VDP_SPRITE_SCALE_1);
@@ -913,14 +1078,16 @@ void main()
 	VDP_LoadSpritePattern(g_GhostPattern, SH_GHOST, 2 * 4);
 	VDP_LoadSpritePattern(g_DigitPattern, SH_DIGIT, 10 * 4);
 	VDP_LoadSpritePattern(g_PacHalfPattern, SH_HALF, 4 * 4);
-	VDP_SetSpriteExUniColor(g_Sprt,   (u8)g_PacX, (u8)g_PacY, SH_CLOSED, COLOR_LIGHT_YELLOW);
-	VDP_SetSpriteExUniColor(g_EnSprt, (u8)g_EnX,  (u8)g_EnY,  SH_GHOST,  COLOR_LIGHT_RED);
+	VDP_SetSpriteExUniColor(SPRT_PAC, (u8)CELL, (u8)CELL, SH_CLOSED, COLOR_LIGHT_YELLOW);
+	for (u8 i = 0; i < NUM_GHOSTS; ++i)
+	{
+		VDP_SetSpriteExUniColor(SPRT_GHOST + i, 0, 0, SH_GHOST, g_GhColor[i]);
+		VDP_HideSprite(SPRT_GHOST + i);   // DrawGhosts los coloca si son visibles
+	}
 	// Marcador: 4 digitos en posicion FIJA de pantalla (esquina superior izq.)
-	VDP_SetSpriteExUniColor(g_DigSprt[0], 8,  4, SH_DIGIT, COLOR_WHITE);
-	VDP_SetSpriteExUniColor(g_DigSprt[1], 24, 4, SH_DIGIT, COLOR_WHITE);
-	VDP_SetSpriteExUniColor(g_DigSprt[2], 40, 4, SH_DIGIT, COLOR_WHITE);
-	VDP_SetSpriteExUniColor(g_DigSprt[3], 56, 4, SH_DIGIT, COLOR_WHITE);
-	VDP_DisableSpritesFrom(6);
+	for (u8 i = 0; i < 4; ++i)
+		VDP_SetSpriteExUniColor(SPRT_DIGIT + i, 8 + i * 16, 4, SH_DIGIT, COLOR_WHITE);
+	VDP_DisableSpritesFrom(SPRT_LIFE);
 
 	g_Score = 0;
 	ShowScore();
@@ -932,7 +1099,7 @@ void main()
 	PSG_SetVolume(PSG_CHANNEL_C, 0);
 	PSG_Apply();
 
-	InitScroll();
+	ResetPositions();
 
 	while (!Keyboard_IsKeyPressed(KEY_ESC))
 	{
@@ -940,14 +1107,14 @@ void main()
 		// Render en V-Blank: volcado de columna entrante + scroll por hardware
 		UpdateScroll();
 		DrawPac();
-		DrawEnemy();
+		DrawGhosts();
 		CyclePellet();
 		SoundUpdate();
 		// Logica para el frame siguiente
 		g_Frame++;
 		ReadInput();
 		UpdatePac();
-		UpdateEnemy();
+		UpdateGhosts();
 		UpdateCamera();
 	}
 
