@@ -428,6 +428,14 @@
 // MSX-Audio options
 #define MSXMUSIC_USE_RESUME			TRUE	// Add function to allow playback pause and resume
 
+// WORKAROUND (this MSXgl checkout): system_port.h declares the MSX-Music index
+// port (0x7C) but is MISSING the data port (0x7D) that engine/src/msx-music.c
+// writes (g_MSXMusic_DataPort). msxgl_config.h is included by core.h BEFORE
+// system_port.h in every engine translation unit, so declaring it here makes it
+// visible to msx-music.c. Canonical YM2413 data port = 0x7D. Purely additive and
+// in-project, so the CI release build (which clones MSXgl fresh) compiles too.
+__sfr __at(0x7D)				g_MSXMusic_DataPort;
+
 // SCC options
 #define SCC_USE_EXTA				TRUE	// Add helper functions to handle PSG settings
 #define SCC_USE_RESUME				TRUE	// Add function to allow playback pause and resume

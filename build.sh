@@ -22,7 +22,8 @@ if [[ ! -d "$MSXGL/engine/script/js" ]]; then
     exit 1
 fi
 
-DST="$MSXGL/projects/msx_coco"
+# Staging propio (msx_coco_v2) para no pisar el staging del worktree principal
+DST="$MSXGL/projects/msx_coco_v2"
 mkdir -p "$DST"
 
 echo "[+] Copiando fuentes a $DST"
