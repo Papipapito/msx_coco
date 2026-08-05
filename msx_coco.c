@@ -441,11 +441,19 @@ void InitPalette()
 	VDP_SetPalette((const u8*)g_BasePal);
 }
 
-// Reescribe las 4 entradas temadas (relleno/relleno-scanline/contorno/acento)
-// segun nivel % 4
-void ApplyTheme(u8 level)
+// Indice de tema del nivel EN CURSO: g_Level empieza en 1, asi el primer
+// nivel luce el tema 0 (cian neon), igual que el titulo (bug B2 del tester).
+// UNICO punto de verdad: lo usan NextLevel y el flash de LEVELCLEAR.
+u8 ThemeIdx()
 {
-	u8 t = level & 3;
+	return (u8)(g_Level - 1) & 3;
+}
+
+// Reescribe las 4 entradas temadas (relleno/relleno-scanline/contorno/acento)
+// segun el indice de tema 0..3
+void ApplyTheme(u8 t)
+{
+	t &= 3;
 	VDP_SetPaletteEntry(2, g_ThemeFill[t]);
 	VDP_SetPaletteEntry(12, g_ThemeFillAlt[t]);
 	VDP_SetPaletteEntry(3, g_ThemeEdge[t]);
@@ -783,7 +791,7 @@ void NextLevel()
 	PlaceDots();
 	PlacePellets();
 	BuildTileMap();
-	ApplyTheme(g_Level);
+	ApplyTheme(ThemeIdx());
 	ResetPositions();
 }
 
@@ -1129,20 +1137,28 @@ bool GhostMoves(u8 i)
 	return (g_Frame & 7) != 7;              // ~87.5% (base)
 }
 
+// Buffer de candidatos de ChooseDir a NIVEL DE FICHERO (bug B1/F7): SDCC
+// aliasaba los arrays locales de pila de esta funcion (cand[] y dist[]
+// compartian la base sp+0, verificado en el .asm), asi que g_GhDir acababa
+// recibiendo DISTANCIAS manhattan (que decrecian al acercarse el pac) y los
+// fantasmas quedaban congelados con dir invalida. Un global tiene direccion
+// absoluta: imposible de aliasar. Las distancias se calculan al vuelo en
+// escalares: CERO arrays locales en la funcion.
+u8 g_ChCand[4];
+
 // Eleccion de direccion en celda alineada. Candidatos: != opuesta y con paso
 // libre; en callejon se permite la vuelta atras (igual que el enemigo v1).
 void ChooseDir(u8 i)
 {
 	u8 cx = (u8)(g_GhX[i] / CELL);
 	u8 cy = (u8)(g_GhY[i] / CELL);
-	u8 cand[4];
 	u8 n = 0;
 	u8 opp = Opposite(g_GhDir[i]);
 	for (u8 k = 0; k < 4; ++k)
 	{
 		u8 d = g_AllDir[k];
 		if ((d != opp) && CanMove(cx, cy, d))
-			cand[n++] = d;
+			g_ChCand[n++] = d;
 	}
 	if (n == 0)
 	{
@@ -1150,7 +1166,7 @@ void ChooseDir(u8 i)
 		{
 			u8 d = g_AllDir[k];
 			if (CanMove(cx, cy, d))
-				cand[n++] = d;
+				g_ChCand[n++] = d;
 		}
 		if (n == 0)
 		{
@@ -1162,7 +1178,7 @@ void ChooseDir(u8 i)
 	if ((g_GhState[i] != GST_FRIGHT) && (i == GH_CYAN))
 	{
 		// Erratico: candidata aleatoria
-		g_GhDir[i] = cand[Math_GetRandomMax8(n)];
+		g_GhDir[i] = g_ChCand[Math_GetRandomMax8(n)];
 		return;
 	}
 
@@ -1178,36 +1194,37 @@ void ChooseDir(u8 i)
 		if (ty < 0) ty = 0; else if (ty > MAZE_ROWS - 1) ty = MAZE_ROWS - 1;
 	}
 
-	u8 dist[4];
-	for (u8 k = 0; k < n; ++k)
-	{
-		u8 d = cand[k];
-		dist[k] = CellDist((i8)cx + g_DirDX[d], (i8)cy + g_DirDY[d], tx, ty);
-	}
-
+	u8 bestDir = g_ChCand[0];
+	u8 bestDist = CellDist((i8)cx + g_DirDX[bestDir], (i8)cy + g_DirDY[bestDir], tx, ty);
 	if (g_GhState[i] == GST_FRIGHT)
 	{
-		// MAXIMIZA la distancia; empate -> aleatoria entre las empatadas
-		u8 best = 0;
+		// MAXIMIZA la distancia; empate -> moneda al aire (reservoir)
 		for (u8 k = 1; k < n; ++k)
-			if (dist[k] > dist[best])
-				best = k;
-		u8 tied[4];
-		u8 ties = 0;
-		for (u8 k = 0; k < n; ++k)
-			if (dist[k] == dist[best])
-				tied[ties++] = k;
-		g_GhDir[i] = cand[tied[Math_GetRandomMax8(ties)]];
+		{
+			u8 d = g_ChCand[k];
+			u8 dd = CellDist((i8)cx + g_DirDX[d], (i8)cy + g_DirDY[d], tx, ty);
+			if ((dd > bestDist) || ((dd == bestDist) && (Math_GetRandom8() & 1)))
+			{
+				bestDist = dd;
+				bestDir = d;
+			}
+		}
 	}
 	else
 	{
 		// MINIMIZA; el primer candidato del orden fijo gana (determinista)
-		u8 best = 0;
 		for (u8 k = 1; k < n; ++k)
-			if (dist[k] < dist[best])
-				best = k;
-		g_GhDir[i] = cand[best];
+		{
+			u8 d = g_ChCand[k];
+			u8 dd = CellDist((i8)cx + g_DirDX[d], (i8)cy + g_DirDY[d], tx, ty);
+			if (dd < bestDist)
+			{
+				bestDist = dd;
+				bestDir = d;
+			}
+		}
 	}
+	g_GhDir[i] = bestDir;
 }
 
 void UpdateGhosts()
@@ -1216,8 +1233,13 @@ void UpdateGhosts()
 	{
 		if (g_GhState[i] == GST_PARKED)
 		{
-			// Visible y quieto en spawn hasta que expire su liberacion
-			if (g_GhTimer[i] > 0)
+			// Visible y quieto en spawn hasta que expire su liberacion...
+			// salvo DESPERTAR POR PROXIMIDAD: si el pac se acerca a <=5
+			// celdas manhattan se libera ya — nunca te estampas contra un
+			// muneco quieto, lo ves despertar y moverse (decision del lead)
+			u8 nearPac = CellDist((i8)(g_GhX[i] / CELL), (i8)(g_GhY[i] / CELL),
+			                      (i8)(g_PacX / CELL), (i8)(g_PacY / CELL)) <= 5;
+			if (!nearPac && (g_GhTimer[i] > 0))
 			{
 				g_GhTimer[i]--;
 				continue;
@@ -1284,8 +1306,10 @@ void DrawGhosts()
 // FRIGHTENED Y COLISIONES
 //=============================================================================
 
-// Comer un power pellet: todos los NORMAL dan la vuelta y pasan a FRIGHT.
-// PARKED/EATEN se quedan como estan (nunca se asustan en el spawn).
+// Comer un power pellet: los NORMAL dan la vuelta y pasan a FRIGHT; los
+// PARKED tambien se asustan (quedan LIBERADOS: azules, comestibles, saliendo
+// a la izquierda — el pellet-cebo junto a un aparcado es jugada legitima,
+// decision del lead). Solo GST_EATEN queda al margen.
 void StartFright()
 {
 	i16 t = 420 - (i16)g_Level * 30;   // 7 s decreciente por nivel, minimo 2 s
@@ -1298,6 +1322,11 @@ void StartFright()
 		if (g_GhState[i] == GST_NORMAL)
 		{
 			g_GhDir[i] = Opposite(g_GhDir[i]);
+			g_GhState[i] = GST_FRIGHT;
+		}
+		else if (g_GhState[i] == GST_PARKED)
+		{
+			g_GhDir[i] = DIR_LEFT;
 			g_GhState[i] = GST_FRIGHT;
 		}
 		// Re-azular tambien a los que ya eran FRIGHT: podian estar blancos
@@ -1612,7 +1641,7 @@ void UpdateLevelClear()
 	{
 		g_AltTimer = 15;
 		g_AltShow ^= 1;
-		VDP_SetPaletteEntry(3, g_AltShow ? RGB16(7, 7, 7) : g_ThemeEdge[g_Level & 3]);
+		VDP_SetPaletteEntry(3, g_AltShow ? RGB16(7, 7, 7) : g_ThemeEdge[ThemeIdx()]);
 	}
 	if (--g_StateTimer == 0)
 	{
