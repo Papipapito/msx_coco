@@ -41,7 +41,7 @@ jobs:
             ROM de **MSX COCO** `${{ inputs.tag || github.ref_name }}` para **MSX2+** (chip V9958).
 
             Carga `msx_coco.rom` como cartucho en un emulador con V9958 (openMSX, blueMSX) o en hardware real.
-            Controles: cursores del teclado o joystick del puerto 1; `ESC` para salir.
+            Controles: `ESPACIO` para empezar; cursores del teclado o joystick del puerto 1 para moverte.
 
             Ver el [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/docs/CHANGELOG.md) y el [README](https://github.com/${{ github.repository }}/blob/main/README.md).
           files: msx_coco.rom
