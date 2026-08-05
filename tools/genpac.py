@@ -94,6 +94,44 @@ ghost_b = [
 "..##....##....##",
 ".#......#......#",
 ]
+# Fantasma FRIGHTENED: ojos pequenos 2x2 mas bajos + boca ondulada (zigzag de
+# huecos). Cara estatica; el faldon anima igual que el fantasma normal (A/B).
+fright_a = [
+"......####......",
+"....########....",
+"...##########...",
+"..############..",
+".##############.",
+".##############.",
+".###..####..###.",
+".###..####..###.",
+"################",
+"##.##.##.##.##.#",
+"#.##.##.##.##.##",
+"################",
+"################",
+"###..###..###..#",
+"##....##....##..",
+"#......#......#.",
+]
+fright_b = [
+"......####......",
+"....########....",
+"...##########...",
+"..############..",
+".##############.",
+".##############.",
+".###..####..###.",
+".###..####..###.",
+"################",
+"##.##.##.##.##.#",
+"#.##.##.##.##.##",
+"################",
+"################",
+"#..###..###..###",
+"..##....##....##",
+".#......#......#",
+]
 def grid(img): return [[1 if c == '#' else 0 for c in row] for row in img]
 def flip_h(g): return [row[::-1] for row in g]
 def rot_cw(g):  return [[g[15 - c][r] for c in range(16)] for r in range(16)]
@@ -124,8 +162,11 @@ gh = grid(open_half)
 pac_half = [("HALF_R", gh), ("HALF_L", flip_h(gh)),
             ("HALF_U", rot_ccw(gh)), ("HALF_D", rot_cw(gh))]
 ghost = [("GHOST_A", grid(ghost_a)), ("GHOST_B", grid(ghost_b))]
+fright = [("FRIGHT_A", grid(fright_a)), ("FRIGHT_B", grid(fright_b))]
 emit("g_PacPattern", pac)
 print("")
 emit("g_GhostPattern", ghost)
 print("")
 emit("g_PacHalfPattern", pac_half)
+print("")
+emit("g_FrightPattern", fright)

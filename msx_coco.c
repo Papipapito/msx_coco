@@ -220,6 +220,9 @@ const u16 g_ThemeAccent[4] = { RGB16(4, 6, 7), RGB16(4, 7, 5), RGB16(7, 4, 3), R
 #define SH_GHOST      20   // GHOST_A=20, GHOST_B=24
 #define SH_DIGIT      28   // digitos 0-9 del marcador: 28 + d*4
 #define SH_HALF       68   // boca media: HALF_R=68, HALF_L=72, HALF_U=76, HALF_D=80
+#define SH_DEATH      84   // colapso del pac D0..D4: 84 + f*4
+#define SH_FRIGHT     104  // fantasma asustado: FRIGHT_A=104, FRIGHT_B=108
+#define SH_LETTER     112  // letras M,S,X,C,O,R,E,A,D,Y,G,V,!: 112 + l*4
 
 const u8 g_PacPattern[5 * 4 * 8] =
 {
@@ -260,6 +263,14 @@ const u8 g_PacHalfPattern[4 * 4 * 8] =
 	0x03, 0x0F, 0x1F, 0x3F, 0x7F, 0x7F, 0xFF, 0xFF, 0xFE, 0xFC, 0x7C, 0x78, 0x30, 0x10, 0x00, 0x00, 0xC0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFE, 0xE7, 0xE7, 0x7F, 0x3F, 0x3E, 0x1E, 0x0C, 0x08, 0x00, 0x00, // HALF_D
 };
 
+// Fantasma FRIGHTENED: ojos pequenos + boca ondulada (tools/genpac.py); el
+// faldon anima A/B al mismo ritmo que el patron normal
+const u8 g_FrightPattern[2 * 4 * 8] =
+{
+	0x03, 0x0F, 0x1F, 0x3F, 0x7F, 0x7F, 0x73, 0x73, 0xFF, 0xDB, 0xB6, 0xFF, 0xFF, 0xE7, 0xC3, 0x81, 0xC0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFE, 0xCE, 0xCE, 0xFF, 0x6D, 0xDB, 0xFF, 0xFF, 0x39, 0x0C, 0x02, // FRIGHT_A
+	0x03, 0x0F, 0x1F, 0x3F, 0x7F, 0x7F, 0x73, 0x73, 0xFF, 0xDB, 0xB6, 0xFF, 0xFF, 0x9C, 0x30, 0x40, 0xC0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFE, 0xCE, 0xCE, 0xFF, 0x6D, 0xDB, 0xFF, 0xFF, 0xE7, 0xC3, 0x81, // FRIGHT_B
+};
+
 //=============================================================================
 // MAPA — generado en RAM por GenerateMaze() (1=pared, 0=camino)
 //=============================================================================
@@ -285,6 +296,13 @@ u8  g_GhDir[NUM_GHOSTS];
 u8  g_GhState[NUM_GHOSTS];   // GST_*
 u8  g_GhTimer[NUM_GHOSTS];   // PARKED: frames hasta liberacion / EATEN: pausa
 u8  g_GhAnim;                // compartido: alterna shape A/B de los 3
+
+// Frightened global (los pellets afectan a todos los fantasmas a la vez)
+u16 g_FrightTimer;           // frames restantes; 0 = inactivo
+u8  g_EatChain;              // 0..3 -> 20/40/80/160 puntos por fantasma
+
+// Celdas de los 4 power pellets del nivel (uno por cuadrante)
+u8  g_PelCX[4], g_PelCY[4];
 
 u16 g_CameraX;     // posicion de camara en el mundo (px), 0..MAX_SCROLL
 u16 g_DrawnLeft;   // columna de tile del mundo en el borde izquierdo del name table
@@ -398,6 +416,45 @@ void PlaceDots()
 			{
 				g_DotMap[(u16)cy * MAZE_COLS + cx] = 1;
 				g_DotsLeft++;
+			}
+		}
+	}
+}
+
+// 4 power pellets, uno por cuadrante, promocionando el dot (1->2) de la celda
+// de camino mas cercana al objetivo del cuadrante. Barrido determinista por
+// anillos de Chebyshev (dy exterior, dx interior, crecientes): mismo laberinto
+// => mismos pellets. g_DotsLeft NO cambia: el pellet ya contaba como dot.
+void PlacePellets()
+{
+	const i8 tgx[4] = { 2, MAZE_COLS - 3, 2, MAZE_COLS - 3 };
+	const i8 tgy[4] = { 2, 2, MAZE_ROWS - 3, MAZE_ROWS - 3 };
+	for (u8 q = 0; q < 4; ++q)
+	{
+		u8 placed = FALSE;
+		for (i8 r = 0; (r <= 8) && !placed; ++r)
+		{
+			for (i8 dy = -r; (dy <= r) && !placed; ++dy)
+			{
+				for (i8 dx = -r; dx <= r; ++dx)
+				{
+					if ((dx > -r) && (dx < r) && (dy > -r) && (dy < r))
+						continue;                  // solo el anillo exterior (Chebyshev == r)
+					i8 cx = tgx[q] + dx;
+					i8 cy = tgy[q] + dy;
+					if ((cx < 0) || (cx >= MAZE_COLS) || (cy < 0) || (cy >= MAZE_ROWS))
+						continue;
+					if ((cx == 1) && (cy == 1))
+						continue;                  // spawn del pac
+					u16 di = (u16)(u8)cy * MAZE_COLS + (u8)cx;
+					if (g_DotMap[di] != 1)
+						continue;                  // pared, sin dot o ya pellet
+					g_DotMap[di] = 2;
+					g_PelCX[q] = (u8)cx;
+					g_PelCY[q] = (u8)cy;
+					placed = TRUE;
+					break;
+				}
 			}
 		}
 	}
@@ -621,6 +678,9 @@ void ResetPositions()
 		VDP_SetSpriteUniColor(SPRT_GHOST + i, g_GhColor[i]);
 	}
 
+	g_FrightTimer = 0;
+	g_EatChain = 0;
+
 	UpdateCamera();
 	InitScroll();
 }
@@ -633,6 +693,7 @@ void NextLevel()
 	Math_SetRandomSeed8((u8)(0x37 + g_Level * 7));
 	GenerateMaze();
 	PlaceDots();
+	PlacePellets();
 	BuildTileMap();
 	ApplyTheme(g_Level);
 	ResetPositions();
@@ -719,6 +780,9 @@ void FM_SoundUpdate()
 // COMECOCOS
 //=============================================================================
 
+// Prototipo (definida en la seccion de fantasmas; UpdatePac la dispara)
+void StartFright();
+
 void ReadInput()
 {
 	if (Keyboard_IsKeyPressed(KEY_RIGHT))      g_PacWantDir = DIR_RIGHT;
@@ -742,21 +806,31 @@ void UpdatePac()
 		u8 cx = (u8)(g_PacX / CELL);
 		u8 cy = (u8)(g_PacY / CELL);
 
-		// Comer el punto de la celda actual (si lo hay)
+		// Comer el comestible de la celda actual (1 = dot, 2 = power pellet)
 		u16 di = (u16)cy * MAZE_COLS + cx;
-		if (g_DotMap[di])
+		u8 d = g_DotMap[di];
+		if (d)
 		{
 			g_DotMap[di] = 0;
 			g_DotsLeft--;
-			AddScore(PTS_DOT);
-			SfxEat();
 			u16 base = ((u16)(cy * 2)) * TILE_COLS + (cx * 2);
-			// Limpia los 4 sub-tiles del punto en el mapa logico
+			// Limpia los 4 sub-tiles del comestible en el mapa logico
 			g_TileMap[base]                 = T_PATH;
 			g_TileMap[base + 1]             = T_PATH;
 			g_TileMap[base + TILE_COLS]     = T_PATH;
 			g_TileMap[base + TILE_COLS + 1] = T_PATH;
 			EraseDotOnScreen(cx, cy);
+			if (d == 1)
+			{
+				AddScore(PTS_DOT);
+				SfxEat();
+			}
+			else
+			{
+				AddScore(PTS_PELLET);
+				StartFright();
+				SfxEat();
+			}
 			if (g_DotsLeft == 0)
 				NextLevel();
 		}
@@ -945,6 +1019,19 @@ void UpdateGhosts()
 			g_GhState[i] = GST_NORMAL;
 			g_GhDir[i] = DIR_LEFT;
 		}
+		else if (g_GhState[i] == GST_EATEN)
+		{
+			// Pausa oculto en spawn; al expirar reaparece NORMAL aunque el
+			// fright global siga activo (regla clasica y mas simple)
+			if (g_GhTimer[i] > 0)
+			{
+				g_GhTimer[i]--;
+				continue;
+			}
+			g_GhState[i] = GST_NORMAL;
+			g_GhDir[i] = DIR_LEFT;
+			VDP_SetSpriteUniColor(SPRT_GHOST + i, g_GhColor[i]);
+		}
 		if (!GhostMoves(i))
 			continue;
 		// ChooseDir SOLO en frames en que se mueve: evita re-rolls del
@@ -976,8 +1063,101 @@ void DrawGhosts()
 			VDP_HideSprite(SPRT_GHOST + i);
 			continue;
 		}
-		VDP_SetSpritePattern(SPRT_GHOST + i, alt ? (SH_GHOST + 4) : SH_GHOST);
+		u8 base = (g_GhState[i] == GST_FRIGHT) ? SH_FRIGHT : SH_GHOST;
+		VDP_SetSpritePattern(SPRT_GHOST + i, alt ? (base + 4) : base);
 		VDP_SetSpritePosition(SPRT_GHOST + i, (u8)sx, (u8)g_GhY[i]);
+	}
+}
+
+//=============================================================================
+// FRIGHTENED Y COLISIONES
+//=============================================================================
+
+// Comer un power pellet: todos los NORMAL dan la vuelta y pasan a FRIGHT.
+// PARKED/EATEN se quedan como estan (nunca se asustan en el spawn).
+void StartFright()
+{
+	i16 t = 420 - (i16)g_Level * 30;   // 7 s decreciente por nivel, minimo 2 s
+	if (t < 120)
+		t = 120;
+	g_FrightTimer = (u16)t;
+	g_EatChain = 0;
+	for (u8 i = 0; i < NUM_GHOSTS; ++i)
+	{
+		if (g_GhState[i] == GST_NORMAL)
+		{
+			g_GhDir[i] = Opposite(g_GhDir[i]);
+			g_GhState[i] = GST_FRIGHT;
+		}
+		// Re-azular tambien a los que ya eran FRIGHT: podian estar blancos
+		// del parpadeo de aviso y el timer acaba de reiniciarse
+		if (g_GhState[i] == GST_FRIGHT)
+			VDP_SetSpriteUniColor(SPRT_GHOST + i, COLOR_DARK_BLUE);
+	}
+}
+
+// Ciclo de vida del frightened: cuenta atras global, parpadeo de aviso los
+// ultimos 2 s (toggle de color solo cada 16 frames: 48 B de VRAM, no cada
+// frame) y vuelta a NORMAL al expirar.
+void UpdateFright()
+{
+	if (g_FrightTimer == 0)
+		return;
+	g_FrightTimer--;
+	if (g_FrightTimer == 0)
+	{
+		for (u8 i = 0; i < NUM_GHOSTS; ++i)
+		{
+			if (g_GhState[i] == GST_FRIGHT)
+			{
+				g_GhState[i] = GST_NORMAL;
+				VDP_SetSpriteUniColor(SPRT_GHOST + i, g_GhColor[i]);
+			}
+		}
+	}
+	else if ((g_FrightTimer < 120) && ((g_FrightTimer & 15) == 0))
+	{
+		u8 c = ((g_FrightTimer >> 4) & 1) ? COLOR_WHITE : COLOR_DARK_BLUE;
+		for (u8 i = 0; i < NUM_GHOSTS; ++i)
+		{
+			if (g_GhState[i] == GST_FRIGHT)
+				VDP_SetSpriteUniColor(SPRT_GHOST + i, c);
+		}
+	}
+}
+
+// AABB perdonador de 12 px (los sprites son de 16): roce leve no mata.
+// PARKED SI colisiona (esta en el mapa); EATEN no tiene cuerpo.
+void CheckCollisions()
+{
+	for (u8 i = 0; i < NUM_GHOSTS; ++i)
+	{
+		if (g_GhState[i] == GST_EATEN)
+			continue;
+		i16 dx = (i16)g_PacX - (i16)g_GhX[i];
+		if (dx < 0)
+			dx = -dx;
+		if (dx >= 12)
+			continue;
+		i16 dy = (i16)g_PacY - (i16)g_GhY[i];
+		if (dy < 0)
+			dy = -dy;
+		if (dy >= 12)
+			continue;
+		if (g_GhState[i] == GST_FRIGHT)
+		{
+			// Comerselo: cadena 20/40/80/160 y pausa oculto en su spawn
+			AddScore(PTS_GHOST_BASE << g_EatChain);
+			if (g_EatChain < 3)
+				g_EatChain++;
+			g_GhState[i] = GST_EATEN;
+			g_GhTimer[i] = 120;
+			VDP_HideSprite(SPRT_GHOST + i);
+			g_GhX[i] = (u16)g_GhSpawnCX[i] * CELL;
+			g_GhY[i] = (u16)g_GhSpawnCY[i] * CELL;
+			SfxEat();
+		}
+		// else: muerte del pac (F3: EnterState(ST_DYING))
 	}
 }
 
@@ -1067,6 +1247,7 @@ void main()
 	Math_SetRandomSeed8(0x37);
 	GenerateMaze();
 	PlaceDots();
+	PlacePellets();
 	BuildTileMap();
 
 	g_PacAnim = 0;
@@ -1078,6 +1259,7 @@ void main()
 	VDP_LoadSpritePattern(g_GhostPattern, SH_GHOST, 2 * 4);
 	VDP_LoadSpritePattern(g_DigitPattern, SH_DIGIT, 10 * 4);
 	VDP_LoadSpritePattern(g_PacHalfPattern, SH_HALF, 4 * 4);
+	VDP_LoadSpritePattern(g_FrightPattern, SH_FRIGHT, 2 * 4);
 	VDP_SetSpriteExUniColor(SPRT_PAC, (u8)CELL, (u8)CELL, SH_CLOSED, COLOR_LIGHT_YELLOW);
 	for (u8 i = 0; i < NUM_GHOSTS; ++i)
 	{
@@ -1115,6 +1297,8 @@ void main()
 		ReadInput();
 		UpdatePac();
 		UpdateGhosts();
+		UpdateFright();
+		CheckCollisions();
 		UpdateCamera();
 	}
 
