@@ -21,8 +21,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clonar MSXgl (shallow)
-        run: git clone --depth 1 https://github.com/aoineko-fr/MSXgl.git /tmp/MSXgl
+      # MSXgl ANCLADO al commit del entorno de desarrollo (7f2b98b, 2026-05-24).
+      # El HEAD de MSXgl produjo una ROM corrupta el 2026-08-05 (arranque con
+      # basura en pantalla): la lib evoluciona sin compatibilidad garantizada,
+      # asi que el CI compila contra el mismo commit con el que se verifica en
+      # local. Para actualizar: probar el nuevo commit en local ANTES de cambiarlo.
+      - name: Clonar MSXgl (anclado a 7f2b98b)
+        run: |
+          git init /tmp/MSXgl
+          git -C /tmp/MSXgl remote add origin https://github.com/aoineko-fr/MSXgl.git
+          git -C /tmp/MSXgl fetch --depth 1 origin 7f2b98b9179f3caecb4832117a3709d50a331a49
+          git -C /tmp/MSXgl checkout FETCH_HEAD
 
       - name: Compilar msx_coco.rom
         run: |
