@@ -364,8 +364,12 @@ u8  g_AltTimer;    // sub-contador reutilizable (GAMEOVER alterna / LEVELCLEAR p
 u8  g_AltShow;     // toggle del sub-contador
 u8  g_MazeSeedBase; // semilla de la partida (frame del SPACE = entropia humana)
 
-u8  g_SfxTimer;    // frames restantes del SFX de comer (0 = sin sonido)
-u16 g_SfxTone;     // periodo de tono actual del SFX
+// SFX (motor por tablas, un solo canal: FM ch0 o PSG C)
+u8  g_SfxId;       // SFX_* activo (SFX_NONE = silencio)
+u8  g_SfxFrame;    // frame actual dentro del SFX
+u8  g_SfxPrio;     // prioridad del SFX activo (uno nuevo entra si prio >= actual)
+u8  g_SfxBlk;      // FM: block de la ultima nota (para el key-off)
+u16 g_SfxTone;     // FM: fnum de la ultima nota / PSG: periodo actual
 
 u8  g_HasFM;       // TRUE if any YM2413 present
 u8  g_FMType;      // MSXMUSIC_NOTFOUND / _INTERNAL / _EXTERNAL
@@ -765,80 +769,197 @@ void NextLevel()
 }
 
 //=============================================================================
-// SONIDO (PSG, canal C, no bloqueante). PSG_ACCESS == PSG_INDIRECT: las
-// llamadas PSG_Set* solo escriben el buffer RAM; PSG_Apply() vuelca al chip.
+// SFX — motor unico frame-driven por tablas (DESIGN_v020 seccion 7).
+// FM (YM2413 canal 0) si hay chip; si no, PSG canal C. PSG_ACCESS==INDIRECT:
+// las PSG_Set* solo escriben el buffer RAM, PSG_Apply() vuelca al chip.
 //=============================================================================
 
-// Prototipos del camino FM (definidos tras SoundUpdate)
-void FM_SfxEat();
-void FM_SoundUpdate();
+#define SFX_NONE      0
+#define SFX_DOT       1   // prio 0
+#define SFX_PELLET    2   // prio 1
+#define SFX_EATGHOST  3   // prio 2
+#define SFX_START     4   // prio 3
+#define SFX_CLEAR     5   // prio 3
+#define SFX_DEATH     6   // prio 4
 
-// Dispara el efecto de "comer": tono ascendente breve en el canal C.
-void SfxEat()
-{
-	g_SfxTimer = 6;
-	if (g_HasFM)
-	{
-		FM_SfxEat();
-		return;
-	}
-	g_SfxTone  = 0x0A0;
-	PSG_SetTone(PSG_CHANNEL_C, g_SfxTone);
-	PSG_SetVolume(PSG_CHANNEL_C, 13);
-}
+const u8 g_SfxPrioTab[7] = { 0, 0, 1, 2, 3, 3, 4 };
+// Ultimo frame de cada SFX (el paso en ese frame hace el key-off/vol 0)
+const u8 g_SfxLen[7]     = { 0, 6, 12, 8, 30, 24, 40 };
 
-// Avanza el SFX un frame. SIEMPRE termina con PSG_Apply() (C1): sin el Apply
-// nada del buffer RAM llega al chip en modo PSG_INDIRECT.
-void SoundUpdate()
-{
-	if (g_HasFM)
-	{
-		if (g_SfxTimer > 0)
-		{
-			g_SfxTimer--;
-			FM_SoundUpdate();
-		}
-		return;
-	}
-	if (g_SfxTimer > 0)
-	{
-		g_SfxTimer--;
-		g_SfxTone += 0x40;
-		PSG_SetTone(PSG_CHANNEL_C, g_SfxTone);
-		if (g_SfxTimer == 0)
-			PSG_SetVolume(PSG_CHANNEL_C, 0);
-	}
-	PSG_Apply();
-}
+// Notas FM (block, fnum): C5 (4,0x159) E5 (4,0x1B2) G5 (5,0x102) C6 (5,0x159)
+// E6 (5,0x1B2). Equivalencias PSG (periodo = 1789772/(16*freq)):
+// C5 0xD6, E5 0xAA, G5 0x8F, C6 0x6B, E6 0x55.
 
-//=============================================================================
-// SONIDO FM (YM2413 / MSX-Music). SFX de "comer" cuando hay chip FM presente.
-//=============================================================================
-
-#define FM_BLOCK        4
-#define FM_FNUM_LO      0x180
-#define FM_FNUM_HI      0x210
-#define FM_VOL          0
-
-void FM_Note(u16 fnum, u8 keyOn)
+// Nota FM cruda: fnum bajo (reg 0x10) + key/block/fnum alto (reg 0x20)
+void FM_Note(u8 block, u16 fnum, u8 keyOn)
 {
 	MSXMusic_SetRegister(0x10, (u8)(fnum & 0xFF));
 	MSXMusic_SetRegister(0x20,
-		(keyOn ? 0x10 : 0x00) | (FM_BLOCK << 1) | (u8)((fnum >> 8) & 0x01));
+		(keyOn ? 0x10 : 0x00) | (block << 1) | (u8)((fnum >> 8) & 0x01));
 }
 
-void FM_SfxEat()
+// Key-on recordando block/fnum: el key-off posterior debe reescribir la misma
+// nota sin el bit de key (el YM2413 no tiene "silencio" directo)
+void SfxFmOn(u8 block, u16 fnum)
 {
-	MSXMusic_SetRegister(0x30, (1 << 4) | FM_VOL); // inst 1 (Violin), loud
-	FM_Note(FM_FNUM_LO, 1);
+	g_SfxBlk = block;
+	g_SfxTone = fnum;
+	FM_Note(block, fnum, 1);
 }
 
-void FM_SoundUpdate()
+void SfxFmOff()
 {
-	if (g_SfxTimer == 3)
-		FM_Note(FM_FNUM_HI, 1);
-	else if (g_SfxTimer == 0)
-		FM_Note(FM_FNUM_HI, 0); // key-off
+	FM_Note(g_SfxBlk, g_SfxTone, 0);
+}
+
+void SfxPsgOn(u16 period, u8 vol)
+{
+	g_SfxTone = period;
+	PSG_SetTone(PSG_CHANNEL_C, period);
+	PSG_SetVolume(PSG_CHANNEL_C, vol);
+}
+
+void SfxPsgOff()
+{
+	PSG_SetVolume(PSG_CHANNEL_C, 0);
+}
+
+// Un paso (frame f) del SFX id en el camino FM. Instrumentos: 3 piano (blips),
+// 7 trompeta (fanfarrias), 10 synth (muerte). Volumen 0 = fuerte.
+void SfxStepFM(u8 id, u8 f)
+{
+	switch (id)
+	{
+	case SFX_DOT:      // blip C5 -> C6
+		if (f == 0)       { MSXMusic_SetRegister(0x30, (3 << 4) | 0); SfxFmOn(4, 0x159); }
+		else if (f == 3)  SfxFmOn(5, 0x159);
+		else if (f == 6)  SfxFmOff();
+		break;
+	case SFX_PELLET:   // arpegio ascendente C5-E5-G5-C6
+		if (f == 0)       { MSXMusic_SetRegister(0x30, (3 << 4) | 0); SfxFmOn(4, 0x159); }
+		else if (f == 3)  SfxFmOn(4, 0x1B2);
+		else if (f == 6)  SfxFmOn(5, 0x102);
+		else if (f == 9)  SfxFmOn(5, 0x159);
+		else if (f == 12) SfxFmOff();
+		break;
+	case SFX_EATGHOST: // doble blip agudo C6 / E6
+		if (f == 0)       { MSXMusic_SetRegister(0x30, (3 << 4) | 0); SfxFmOn(5, 0x159); }
+		else if (f == 2)  SfxFmOff();
+		else if (f == 4)  SfxFmOn(5, 0x1B2);
+		else if (f == 8)  SfxFmOff();
+		break;
+	case SFX_START:    // arpegio doble en un solo canal
+		if (f == 0)       { MSXMusic_SetRegister(0x30, (7 << 4) | 0); SfxFmOn(4, 0x159); }
+		else if (f == 4)  SfxFmOn(5, 0x102);
+		else if (f == 8)  SfxFmOn(5, 0x159);
+		else if (f == 12) SfxFmOff();
+		else if (f == 16) SfxFmOn(4, 0x1B2);
+		else if (f == 20) SfxFmOn(5, 0x102);
+		else if (f == 24) SfxFmOn(5, 0x159);
+		else if (f == 30) SfxFmOff();
+		break;
+	case SFX_CLEAR:    // fanfarria C5-E5-G5-C6 con la ultima mantenida
+		if (f == 0)       { MSXMusic_SetRegister(0x30, (7 << 4) | 0); SfxFmOn(4, 0x159); }
+		else if (f == 4)  SfxFmOn(4, 0x1B2);
+		else if (f == 8)  SfxFmOn(5, 0x102);
+		else if (f == 12) SfxFmOn(5, 0x159);
+		else if (f == 24) SfxFmOff();
+		break;
+	case SFX_DEATH:    // slide descendente ~8 semitonos (2 writes/frame)
+		if (f == 0)       { MSXMusic_SetRegister(0x30, (10 << 4) | 0); SfxFmOn(5, 0x1B2); }
+		else if (f < 32)  { g_SfxTone -= 0x0C; FM_Note(5, g_SfxTone, 1); }
+		else if (f == 32) SfxFmOff();
+		// f 33..40: silencio
+		break;
+	}
+}
+
+// Mismo guion en PSG canal C (fallback sin chip FM)
+void SfxStepPSG(u8 id, u8 f)
+{
+	switch (id)
+	{
+	case SFX_DOT:      // tono ascendente breve (el de la v1, conservado)
+		if (f == 0)       SfxPsgOn(0x0A0, 13);
+		else if (f < 6)   { g_SfxTone += 0x40; PSG_SetTone(PSG_CHANNEL_C, g_SfxTone); }
+		else              SfxPsgOff();
+		break;
+	case SFX_PELLET:
+		if (f == 0)       SfxPsgOn(0xD6, 13);
+		else if (f == 3)  PSG_SetTone(PSG_CHANNEL_C, 0xAA);
+		else if (f == 6)  PSG_SetTone(PSG_CHANNEL_C, 0x8F);
+		else if (f == 9)  PSG_SetTone(PSG_CHANNEL_C, 0x6B);
+		else if (f == 12) SfxPsgOff();
+		break;
+	case SFX_EATGHOST:
+		if (f == 0)       SfxPsgOn(0x6B, 13);
+		else if (f == 2)  SfxPsgOff();
+		else if (f == 4)  SfxPsgOn(0x55, 13);
+		else if (f == 8)  SfxPsgOff();
+		break;
+	case SFX_START:
+		if (f == 0)       SfxPsgOn(0xD6, 13);
+		else if (f == 4)  PSG_SetTone(PSG_CHANNEL_C, 0x8F);
+		else if (f == 8)  PSG_SetTone(PSG_CHANNEL_C, 0x6B);
+		else if (f == 12) SfxPsgOff();
+		else if (f == 16) SfxPsgOn(0xAA, 13);
+		else if (f == 20) PSG_SetTone(PSG_CHANNEL_C, 0x8F);
+		else if (f == 24) PSG_SetTone(PSG_CHANNEL_C, 0x6B);
+		else if (f == 30) SfxPsgOff();
+		break;
+	case SFX_CLEAR:
+		if (f == 0)       SfxPsgOn(0xD6, 13);
+		else if (f == 4)  PSG_SetTone(PSG_CHANNEL_C, 0xAA);
+		else if (f == 8)  PSG_SetTone(PSG_CHANNEL_C, 0x8F);
+		else if (f == 12) PSG_SetTone(PSG_CHANNEL_C, 0x6B);
+		else if (f == 24) SfxPsgOff();
+		break;
+	case SFX_DEATH:    // periodo creciente (pitch cae), volumen desvaneciendose
+		if (f == 0)       SfxPsgOn(0x55, 12);
+		else if (f < 40)
+		{
+			g_SfxTone += 6;
+			PSG_SetTone(PSG_CHANNEL_C, g_SfxTone);
+			if ((f & 3) == 0)
+				PSG_SetVolume(PSG_CHANNEL_C, 12 - (f >> 2));
+		}
+		else              SfxPsgOff();
+		break;
+	}
+}
+
+// Dispara un SFX: entra si no suena nada o si su prioridad iguala o supera la
+// del activo (igual prioridad re-dispara: p.ej. dots encadenados)
+void SfxPlay(u8 id)
+{
+	if ((g_SfxId == SFX_NONE) || (g_SfxPrioTab[id] >= g_SfxPrio))
+	{
+		g_SfxId = id;
+		g_SfxFrame = 0;
+		g_SfxPrio = g_SfxPrioTab[id];
+	}
+}
+
+// Avanza el SFX activo un frame. SIEMPRE acaba con PSG_Apply() si no hay FM
+// (C1: en PSG_INDIRECT nada del buffer RAM llega al chip sin el Apply).
+void SoundUpdate()
+{
+	if (g_SfxId != SFX_NONE)
+	{
+		if (g_HasFM)
+			SfxStepFM(g_SfxId, g_SfxFrame);
+		else
+			SfxStepPSG(g_SfxId, g_SfxFrame);
+		if (g_SfxFrame >= g_SfxLen[g_SfxId])
+		{
+			g_SfxId = SFX_NONE;
+			g_SfxPrio = 0;
+		}
+		else
+			g_SfxFrame++;
+	}
+	if (!g_HasFM)
+		PSG_Apply();
 }
 
 //=============================================================================
@@ -889,13 +1010,13 @@ void UpdatePac()
 			if (d == 1)
 			{
 				AddScore(PTS_DOT);
-				SfxEat();
+				SfxPlay(SFX_DOT);
 			}
 			else
 			{
 				AddScore(PTS_PELLET);
 				StartFright();
-				SfxEat();
+				SfxPlay(SFX_PELLET);
 			}
 			if (g_DotsLeft == 0)
 				EnterState(ST_LEVELCLEAR);
@@ -1221,7 +1342,7 @@ void CheckCollisions()
 			VDP_HideSprite(SPRT_GHOST + i);
 			g_GhX[i] = (u16)g_GhSpawnCX[i] * CELL;
 			g_GhY[i] = (u16)g_GhSpawnCY[i] * CELL;
-			SfxEat();
+			SfxPlay(SFX_EATGHOST);
 		}
 		else
 		{
@@ -1388,6 +1509,7 @@ void EnterState(u8 s)
 		// READY! solo usa 6 letras: esconder los restos de OVER (sprites 17-18)
 		HideSprites(SPRT_LETTER + 6, SPRT_LETTER + 7);
 		ShowHUD();
+		SfxPlay(SFX_START);
 		break;
 
 	case ST_PLAY:
@@ -1396,6 +1518,7 @@ void EnterState(u8 s)
 
 	case ST_DYING:
 		g_StateTimer = 120;
+		SfxPlay(SFX_DEATH);
 		break;
 
 	case ST_LEVELCLEAR:
@@ -1404,6 +1527,7 @@ void EnterState(u8 s)
 		g_AltShow = 0;
 		if (g_Score > g_HiScore)
 			g_HiScore = g_Score;
+		SfxPlay(SFX_CLEAR);
 		break;
 
 	case ST_GAMEOVER:
@@ -1578,7 +1702,8 @@ void main()
 
 	// PSG: solo el canal C activo (tono ON, ruido OFF). En modo PSG_INDIRECT
 	// hay que llamar a PSG_Apply() para que el mixer/volumen lleguen al chip.
-	g_SfxTimer = 0;
+	g_SfxId = SFX_NONE;
+	g_SfxPrio = 0;
 	PSG_SetMixer(PSG_TONE_C_ON);
 	PSG_SetVolume(PSG_CHANNEL_C, 0);
 	PSG_Apply();
