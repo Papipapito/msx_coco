@@ -224,6 +224,22 @@ const u16 g_ThemeAccent[4] = { RGB16(4, 6, 7), RGB16(4, 7, 5), RGB16(7, 4, 3), R
 #define SH_FRIGHT     104  // fantasma asustado: FRIGHT_A=104, FRIGHT_B=108
 #define SH_LETTER     112  // letras M,S,X,C,O,R,E,A,D,Y,G,V,!: 112 + l*4
 
+// Indices de letra dentro de g_LetterPattern (orden de tools/genpac.py)
+#define L_M           0
+#define L_S           1
+#define L_X           2
+#define L_C           3
+#define L_O           4
+#define L_R           5
+#define L_E           6
+#define L_A           7
+#define L_D           8
+#define L_Y           9
+#define L_G           10
+#define L_V           11
+#define L_EXCL        12
+#define SH_L(l)       (SH_LETTER + (l) * 4)
+
 const u8 g_PacPattern[5 * 4 * 8] =
 {
 	0x03, 0x0F, 0x1F, 0x3C, 0x7C, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0x7F, 0x3F, 0x1F, 0x0F, 0x03, 0xC0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0xFE, 0xFC, 0xF8, 0xF0, 0xC0, // CLOSED
@@ -271,6 +287,34 @@ const u8 g_FrightPattern[2 * 4 * 8] =
 	0x03, 0x0F, 0x1F, 0x3F, 0x7F, 0x7F, 0x73, 0x73, 0xFF, 0xDB, 0xB6, 0xFF, 0xFF, 0x9C, 0x30, 0x40, 0xC0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFE, 0xCE, 0xCE, 0xFF, 0x6D, 0xDB, 0xFF, 0xFF, 0xE7, 0xC3, 0x81, // FRIGHT_B
 };
 
+// Muerte del pac: colapso hacia arriba en 5 fases (tools/genpac.py death_frames)
+const u8 g_DeathPattern[5 * 4 * 8] =
+{
+	0x00, 0x00, 0x00, 0x20, 0x70, 0x78, 0xFC, 0xFE, 0xFF, 0xFF, 0x7F, 0x7F, 0x3F, 0x1F, 0x0F, 0x03, 0x00, 0x00, 0x00, 0x04, 0x0E, 0x1E, 0x3F, 0x7F, 0xFF, 0xFF, 0xFE, 0xFE, 0xFC, 0xF8, 0xF0, 0xC0, // DEATH_D0
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xFE, 0xFF, 0xFF, 0x7F, 0x7F, 0x3F, 0x1F, 0x0F, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x7F, 0xFF, 0xFF, 0xFE, 0xFE, 0xFC, 0xF8, 0xF0, 0xC0, // DEATH_D1
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x7F, 0x7F, 0x3F, 0x1F, 0x0F, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFE, 0xFE, 0xFC, 0xF8, 0xF0, 0xC0, // DEATH_D2
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x0F, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xF0, 0xC0, // DEATH_D3
+	0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x60, 0x60, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x80, 0x80, 0x00, 0x00, 0x00, 0x00, 0x06, 0x06, 0x00, 0x00, 0x00, 0x00, 0x80, 0x80, 0x00, // DEATH_D4
+};
+
+// Letras arcade 12x12 trazo 3 px, estetica de los digitos (tools/genpac.py)
+const u8 g_LetterPattern[13 * 4 * 8] =
+{
+	0x00, 0xE0, 0xF0, 0xF9, 0xEF, 0xEF, 0xE6, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x70, 0xF0, 0xF0, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x00, 0x00, 0x00, // LETTER_M
+	0x00, 0x7F, 0xFF, 0xE0, 0xE0, 0xF0, 0x7F, 0x3F, 0x00, 0xE0, 0xE0, 0xFF, 0x7F, 0x00, 0x00, 0x00, 0x00, 0xE0, 0xF0, 0x70, 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0x70, 0x70, 0xF0, 0xE0, 0x00, 0x00, 0x00, // LETTER_S
+	0x00, 0xE0, 0xF0, 0x79, 0x3F, 0x1F, 0x0F, 0x0F, 0x1F, 0x3F, 0x79, 0xF0, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x70, 0xF0, 0xE0, 0xC0, 0x80, 0x00, 0x00, 0x80, 0xC0, 0xE0, 0xF0, 0x70, 0x00, 0x00, 0x00, // LETTER_X
+	0x00, 0x3F, 0x7F, 0xF0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xF0, 0x7F, 0x3F, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0x70, 0x00, 0x00, 0x00, 0x00, 0x70, 0xF0, 0xE0, 0xC0, 0x00, 0x00, 0x00, // LETTER_C
+	0x00, 0x3F, 0x7F, 0xF0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xF0, 0x7F, 0x3F, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0xF0, 0xE0, 0xC0, 0x00, 0x00, 0x00, // LETTER_O
+	0x00, 0xFF, 0xFF, 0xE0, 0xE0, 0xE0, 0xFF, 0xFF, 0xE3, 0xE1, 0xE0, 0xE0, 0xE0, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0x70, 0xF0, 0xE0, 0xC0, 0xC0, 0xE0, 0xF0, 0x70, 0x70, 0x00, 0x00, 0x00, // LETTER_R
+	0x00, 0xFF, 0xFF, 0xE0, 0xE0, 0xFF, 0xFF, 0xE0, 0xE0, 0xE0, 0xE0, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xF0, 0x00, 0x00, 0xC0, 0xC0, 0x00, 0x00, 0x00, 0x00, 0xF0, 0xF0, 0x00, 0x00, 0x00, // LETTER_E
+	0x00, 0x0F, 0x1F, 0x3F, 0x79, 0xE0, 0xE0, 0xFF, 0xFF, 0xE0, 0xE0, 0xE0, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xC0, 0xE0, 0x70, 0x70, 0xF0, 0xF0, 0x70, 0x70, 0x70, 0x70, 0x00, 0x00, 0x00, // LETTER_A
+	0x00, 0xFF, 0xFF, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x80, 0xE0, 0xF0, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0xF0, 0xE0, 0x80, 0x00, 0x00, 0x00, // LETTER_D
+	0x00, 0xE0, 0xF0, 0x79, 0x3F, 0x1F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x70, 0xF0, 0xE0, 0xC0, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // LETTER_Y
+	0x00, 0x3F, 0x7F, 0xF0, 0xE0, 0xE0, 0xE3, 0xE3, 0xE0, 0xE0, 0xF0, 0x7F, 0x3F, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xE0, 0xF0, 0x00, 0x00, 0xF0, 0xF0, 0x70, 0x70, 0xF0, 0xE0, 0xC0, 0x00, 0x00, 0x00, // LETTER_G
+	0x00, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0x70, 0x70, 0x39, 0x39, 0x1F, 0x1F, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x70, 0x70, 0x70, 0x70, 0x70, 0xE0, 0xE0, 0xC0, 0xC0, 0x80, 0x80, 0x00, 0x00, 0x00, 0x00, // LETTER_V
+	0x00, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x06, 0x00, 0x0F, 0x0F, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // LETTER_EXCL
+};
+
 //=============================================================================
 // MAPA — generado en RAM por GenerateMaze() (1=pared, 0=camino)
 //=============================================================================
@@ -310,6 +354,16 @@ u16 g_DrawnLeft;   // columna de tile del mundo en el borde izquierdo del name t
 u8  g_Level;       // nivel actual (varia la semilla del laberinto y el tema)
 u16 g_Frame;       // contador global de frames (skips de fantasma, ciclos de paleta)
 
+// Vidas / FSM / partida
+u8  g_Lives;
+u8  g_State;       // ST_*
+u16 g_StateTimer;  // frames restantes del estado (READY/DYING/LEVELCLEAR)
+u16 g_HiScore;     // persiste entre partidas hasta apagar (init UNA vez en main)
+u8  g_PrevSpace;   // edge-detect de SPACE
+u8  g_AltTimer;    // sub-contador reutilizable (GAMEOVER alterna / LEVELCLEAR parpadea)
+u8  g_AltShow;     // toggle del sub-contador
+u8  g_MazeSeedBase; // semilla de la partida (frame del SPACE = entropia humana)
+
 u8  g_SfxTimer;    // frames restantes del SFX de comer (0 = sin sonido)
 u16 g_SfxTone;     // periodo de tono actual del SFX
 
@@ -329,6 +383,11 @@ const u8 g_GhSpawnCX[NUM_GHOSTS] = { 30, 30, 30 };
 const u8 g_GhSpawnCY[NUM_GHOSTS] = { 9, 5, 1 };
 const u8 g_GhRelease[NUM_GHOSTS] = { 0, 120, 240 };
 const u8 g_GhColor[NUM_GHOSTS]   = { COLOR_LIGHT_RED, COLOR_MAGENTA, COLOR_CYAN };
+
+// Banners de letras-sprite (filas de <=8 sprites de 16 px: limite HW)
+const u8 g_ReadyShapes[6] = { SH_L(L_R), SH_L(L_E), SH_L(L_A), SH_L(L_D), SH_L(L_Y), SH_L(L_EXCL) };
+const u8 g_GameShapes[4]  = { SH_L(L_G), SH_L(L_A), SH_L(L_M), SH_L(L_E) };
+const u8 g_OverShapes[4]  = { SH_L(L_O), SH_L(L_V), SH_L(L_E), SH_L(L_R) };
 
 //=============================================================================
 // LABERINTO
@@ -690,7 +749,9 @@ void ResetPositions()
 void NextLevel()
 {
 	g_Level++;
-	Math_SetRandomSeed8((u8)(0x37 + g_Level * 7));
+	// Semilla = base de la partida (frame del SPACE en el titulo) + nivel:
+	// cada partida tiene laberintos distintos, pero reproducibles dentro de ella
+	Math_SetRandomSeed8((u8)(g_MazeSeedBase + g_Level * 7));
 	GenerateMaze();
 	PlaceDots();
 	PlacePellets();
@@ -780,8 +841,9 @@ void FM_SoundUpdate()
 // COMECOCOS
 //=============================================================================
 
-// Prototipo (definida en la seccion de fantasmas; UpdatePac la dispara)
+// Prototipos (definidas mas abajo; UpdatePac/CheckCollisions las disparan)
 void StartFright();
+void EnterState(u8 s);
 
 void ReadInput()
 {
@@ -832,7 +894,7 @@ void UpdatePac()
 				SfxEat();
 			}
 			if (g_DotsLeft == 0)
-				NextLevel();
+				EnterState(ST_LEVELCLEAR);
 		}
 
 		if ((g_PacWantDir != DIR_NONE) && CanMove(cx, cy, g_PacWantDir))
@@ -1157,8 +1219,183 @@ void CheckCollisions()
 			g_GhY[i] = (u16)g_GhSpawnCY[i] * CELL;
 			SfxEat();
 		}
-		// else: muerte del pac (F3: EnterState(ST_DYING))
+		else
+		{
+			// Muerte del pac: una sola por frame, congela el resto del chequeo
+			EnterState(ST_DYING);
+			return;
+		}
 	}
+}
+
+//=============================================================================
+// HUD Y BANNERS DE LETRAS
+//=============================================================================
+
+void HideSprites(u8 from, u8 to)
+{
+	for (u8 s = from; s <= to; ++s)
+		VDP_HideSprite(s);
+}
+
+// Fila de letras-sprite blancas equiespaciadas cada 16 px
+void ShowLetterRow(u8 sprt, const u8* shapes, u8 n, u8 x, u8 y)
+{
+	for (u8 i = 0; i < n; ++i)
+	{
+		VDP_SetSpriteExUniColor(sprt + i, x, y, shapes[i], COLOR_WHITE);
+		x += 16;
+	}
+}
+
+// Vidas restantes como mini-pacs. En y=255 el sprite ocupa las lineas 0..15.
+void ShowLives()
+{
+	for (u8 i = 0; i < 3; ++i)
+	{
+		if (i < g_Lives)
+			VDP_SetSpriteExUniColor(SPRT_LIFE + i, 200 + i * 16, 255, SH_OPEN_R, COLOR_LIGHT_YELLOW);
+		else
+			VDP_HideSprite(SPRT_LIFE + i);
+	}
+}
+
+// HUD completo en y=255: nunca comparte linea fisica con las entidades
+// (el area jugable empieza en y=16), asi el peor caso queda en 7 sprites/linea
+void ShowHUD()
+{
+	for (u8 i = 0; i < 4; ++i)
+		VDP_SetSpriteExUniColor(SPRT_DIGIT + i, 8 + i * 16, 255, SH_DIGIT, COLOR_WHITE);
+	ShowScore();
+	ShowLives();
+}
+
+//=============================================================================
+// MAQUINA DE ESTADOS
+//=============================================================================
+
+void NewGame()
+{
+	g_Score = 0;
+	g_Lives = LIVES_START;
+	g_Level = 0;
+	// El frame en que se pulsa SPACE es azar humano: cada partida estrena
+	// laberintos (|1 evita la semilla 0, que degenera el LFSR)
+	g_MazeSeedBase = (u8)(g_Frame ^ 0xA5) | 1;
+	NextLevel();
+	EnterState(ST_READY);
+}
+
+// Setup unico de cada estado: timers, banners y ocultaciones. Las escrituras
+// VRAM de banner se hacen UNA vez aqui, no por frame.
+void EnterState(u8 s)
+{
+	g_State = s;
+	switch (s)
+	{
+	case ST_READY:
+		g_StateTimer = 120;
+		ShowLetterRow(SPRT_LETTER, g_ReadyShapes, 6, 88, 100);
+		// READY! solo usa 6 letras: esconder los restos de OVER (sprites 17-18)
+		HideSprites(SPRT_LETTER + 6, SPRT_LETTER + 7);
+		ShowHUD();
+		break;
+
+	case ST_PLAY:
+		HideSprites(SPRT_LETTER, SPRT_LETTER + 7);
+		break;
+
+	case ST_DYING:
+		g_StateTimer = 120;
+		break;
+
+	case ST_LEVELCLEAR:
+		g_StateTimer = 90;
+		g_AltTimer = 15;
+		g_AltShow = 0;
+		if (g_Score > g_HiScore)
+			g_HiScore = g_Score;
+		break;
+
+	case ST_GAMEOVER:
+		if (g_Score > g_HiScore)
+			g_HiScore = g_Score;
+		g_StateTimer = 0;      // cuenta HACIA ARRIBA (minimo 60 antes de aceptar SPACE)
+		g_AltTimer = 90;
+		g_AltShow = 0;
+		VDP_HideSprite(SPRT_PAC);
+		HideSprites(SPRT_GHOST, SPRT_GHOST + NUM_GHOSTS - 1);
+		HideSprites(SPRT_LIFE, SPRT_LIFE + 2);
+		// GAME y OVER en DOS filas: 4 sprites por linea, lejos del limite de 8
+		ShowLetterRow(SPRT_LETTER, g_GameShapes, 4, 96, 88);
+		ShowLetterRow(SPRT_LETTER + 4, g_OverShapes, 4, 96, 112);
+		break;
+	}
+}
+
+// Guion visual de la muerte (t = frames restantes): 120..61 todo congelado,
+// en 60 se ocultan los fantasmas, 60..21 colapso D0..D4 (8 frames por shape),
+// en 20 se oculta el pac, en 0 (UpdateDying) la transicion.
+void DrawDying()
+{
+	u16 t = g_StateTimer;
+	if (t == 60)
+		HideSprites(SPRT_GHOST, SPRT_GHOST + NUM_GHOSTS - 1);
+	else if ((t < 60) && (t > 20))
+		VDP_SetSpritePattern(SPRT_PAC, SH_DEATH + ((((u8)(60 - t)) >> 3) << 2));
+	else if (t == 20)
+		VDP_HideSprite(SPRT_PAC);
+}
+
+void UpdateDying()
+{
+	if (--g_StateTimer > 0)
+		return;
+	g_Lives--;
+	if (g_Lives == 0)
+	{
+		EnterState(ST_GAMEOVER);
+	}
+	else
+	{
+		ShowLives();
+		ResetPositions();
+		EnterState(ST_READY);
+	}
+}
+
+// Parpadeo de la pared ciclando la ENTRADA 3 (contorno) blanco<->tema cada 15
+// frames: solo puertos de paleta, cero VRAM. NextLevel restaura via ApplyTheme.
+void UpdateLevelClear()
+{
+	if (--g_AltTimer == 0)
+	{
+		g_AltTimer = 15;
+		g_AltShow ^= 1;
+		VDP_SetPaletteEntry(3, g_AltShow ? RGB16(7, 7, 7) : g_ThemeEdge[g_Level & 3]);
+	}
+	if (--g_StateTimer == 0)
+	{
+		NextLevel();
+		EnterState(ST_READY);
+	}
+}
+
+// Con la camara congelada en posicion arbitraria NO se puede usar Print (name
+// table circular desalineada): el hi-score se ensena REUTILIZANDO los mismos
+// 4 digitos-sprite, alternando cada 90 frames entre score y hi-score.
+void UpdateGameOver(u8 spaceEdge)
+{
+	if (g_StateTimer < 1000)
+		g_StateTimer++;
+	if (--g_AltTimer == 0)
+	{
+		g_AltTimer = 90;
+		g_AltShow ^= 1;
+		ShowValue4(g_AltShow ? g_HiScore : g_Score);
+	}
+	if (spaceEdge && (g_StateTimer >= 60))
+		NewGame();
 }
 
 //=============================================================================
@@ -1241,15 +1478,10 @@ void main()
 	InitPalette();
 	ApplyTheme(0);
 
-	// Laberinto aleatorio inicial + puntos, antes de construir el tile map
 	g_Level = 0;
 	g_Frame = 0;
-	Math_SetRandomSeed8(0x37);
-	GenerateMaze();
-	PlaceDots();
-	PlacePellets();
-	BuildTileMap();
-
+	g_HiScore = 0;    // UNA sola vez: persiste entre partidas hasta apagar
+	g_PrevSpace = 0;
 	g_PacAnim = 0;
 	g_GhAnim = 0;
 
@@ -1260,19 +1492,18 @@ void main()
 	VDP_LoadSpritePattern(g_DigitPattern, SH_DIGIT, 10 * 4);
 	VDP_LoadSpritePattern(g_PacHalfPattern, SH_HALF, 4 * 4);
 	VDP_LoadSpritePattern(g_FrightPattern, SH_FRIGHT, 2 * 4);
+	VDP_LoadSpritePattern(g_DeathPattern, SH_DEATH, 5 * 4);
+	VDP_LoadSpritePattern(g_LetterPattern, SH_LETTER, 13 * 4);
 	VDP_SetSpriteExUniColor(SPRT_PAC, (u8)CELL, (u8)CELL, SH_CLOSED, COLOR_LIGHT_YELLOW);
 	for (u8 i = 0; i < NUM_GHOSTS; ++i)
 	{
 		VDP_SetSpriteExUniColor(SPRT_GHOST + i, 0, 0, SH_GHOST, g_GhColor[i]);
 		VDP_HideSprite(SPRT_GHOST + i);   // DrawGhosts los coloca si son visibles
 	}
-	// Marcador: 4 digitos en posicion FIJA de pantalla (esquina superior izq.)
-	for (u8 i = 0; i < 4; ++i)
-		VDP_SetSpriteExUniColor(SPRT_DIGIT + i, 8 + i * 16, 4, SH_DIGIT, COLOR_WHITE);
-	VDP_DisableSpritesFrom(SPRT_LIFE);
-
-	g_Score = 0;
-	ShowScore();
+	// VDP_ClearVRAM dejo el SAT a 0 (sprites "visibles" en (0,0)): ocultar
+	// digitos/vidas/letras hasta que cada estado los ensene (y=213 no corta la cadena)
+	HideSprites(SPRT_DIGIT, SPRT_LETTER + 7);
+	VDP_DisableSpritesFrom(SPRT_LETTER + 8);
 
 	// PSG: solo el canal C activo (tono ON, ruido OFF). En modo PSG_INDIRECT
 	// hay que llamar a PSG_Apply() para que el mixer/volumen lleguen al chip.
@@ -1281,26 +1512,61 @@ void main()
 	PSG_SetVolume(PSG_CHANNEL_C, 0);
 	PSG_Apply();
 
-	ResetPositions();
+	NewGame();
 
-	while (!Keyboard_IsKeyPressed(KEY_ESC))
+	// Bucle principal unico, frame-driven (cartucho ROM: no se sale jamas).
+	// Fase VRAM justo tras el Halt (V-Blank), fase logica despues.
+	while (1)
 	{
 		Halt();
-		// Render en V-Blank: volcado de columna entrante + scroll por hardware
-		UpdateScroll();
-		DrawPac();
-		DrawGhosts();
-		CyclePellet();
+		// ---- fase VRAM ----
+		switch (g_State)
+		{
+		case ST_READY:
+		case ST_PLAY:
+			UpdateScroll();
+			DrawPac();
+			DrawGhosts();
+			CyclePellet();
+			break;
+		case ST_DYING:
+			DrawDying();
+			break;
+		// LEVELCLEAR/GAMEOVER: pantalla estatica (paleta/digitos van por logica)
+		}
 		SoundUpdate();
-		// Logica para el frame siguiente
+		// ---- fase logica ----
 		g_Frame++;
-		ReadInput();
-		UpdatePac();
-		UpdateGhosts();
-		UpdateFright();
-		CheckCollisions();
-		UpdateCamera();
+		u8 space = Keyboard_IsKeyPressed(KEY_SPACE) ? 1 : 0;
+		u8 spaceEdge = (u8)(space && !g_PrevSpace);
+		g_PrevSpace = space;
+		switch (g_State)
+		{
+		case ST_READY:
+			if (--g_StateTimer == 0)
+				EnterState(ST_PLAY);
+			break;
+		case ST_PLAY:
+			ReadInput();
+			UpdatePac();
+			if (g_State != ST_PLAY)
+				break;                   // ultimo comestible -> LEVELCLEAR
+			UpdateGhosts();
+			UpdateFright();
+			CheckCollisions();
+			if (g_State != ST_PLAY)
+				break;                   // colision -> DYING
+			UpdateCamera();
+			break;
+		case ST_DYING:
+			UpdateDying();
+			break;
+		case ST_LEVELCLEAR:
+			UpdateLevelClear();
+			break;
+		case ST_GAMEOVER:
+			UpdateGameOver(spaceEdge);
+			break;
+		}
 	}
-
-	BIOS_Exit(0);
 }
