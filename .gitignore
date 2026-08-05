@@ -13,3 +13,5 @@ out/
 tools/*.png
 tools/omsx_*.txt
 tools/*.log
+
+ruvector.db
