@@ -13,7 +13,7 @@
 #include "msxgl.h"
 #include "psg.h"
 #include "msx-music.h"
-#include "font/font_mgl_sample6.h"   // symbol: g_Font_MGL_Sample6
+#include "font/font_carwar.h"        // symbol: g_Font_Carwar (chars 0x21..0x5F, ~510 B)
 
 //=============================================================================
 // DIMENSIONES
@@ -388,6 +388,10 @@ const u8 g_GhColor[NUM_GHOSTS]   = { COLOR_LIGHT_RED, COLOR_MAGENTA, COLOR_CYAN 
 const u8 g_ReadyShapes[6] = { SH_L(L_R), SH_L(L_E), SH_L(L_A), SH_L(L_D), SH_L(L_Y), SH_L(L_EXCL) };
 const u8 g_GameShapes[4]  = { SH_L(L_G), SH_L(L_A), SH_L(L_M), SH_L(L_E) };
 const u8 g_OverShapes[4]  = { SH_L(L_O), SH_L(L_V), SH_L(L_E), SH_L(L_R) };
+
+// Logo del titulo "MSX COCO" (SCALE_2: letra de 32 px + hueco de 16 entre palabras)
+const u8 g_LogoShapes[7] = { SH_L(L_M), SH_L(L_S), SH_L(L_X), SH_L(L_C), SH_L(L_O), SH_L(L_C), SH_L(L_O) };
+const u8 g_LogoX[7]      = { 8, 40, 72, 120, 152, 184, 216 };
 
 //=============================================================================
 // LABERINTO
@@ -1271,6 +1275,59 @@ void ShowHUD()
 }
 
 //=============================================================================
+// TITULO (attract mode)
+//=============================================================================
+
+// Fila de tiles del name table a T_PATH: banda limpia para el texto del titulo
+// (PRINT_SKIP_SPACE deja ver el tile de fondo bajo los espacios). Solo valida
+// con la camara en 0 (slot fisico == columna de mundo).
+void ClearTextRow(u8 row)
+{
+	u16 dst = g_ScreenLayoutLow + (u16)row * SCREEN_TILE_W;
+	for (u8 x = 0; x < SCREEN_TILE_W; ++x)
+		VDP_Poke_16K(T_PATH, dst++);
+}
+
+// Hi-score con 4 cifras fijas en el cursor actual de Print
+void PrintHiScore()
+{
+	c8 buf[5];
+	u16 v = g_HiScore;
+	u16 div = 1000;
+	for (u8 i = 0; i < 4; ++i)
+	{
+		u8 d = (u8)(v / div);
+		v -= (u16)d * div;
+		div /= 10;
+		buf[i] = '0' + d;
+	}
+	buf[4] = 0;
+	Print_DrawText(buf);
+}
+
+// Desfile bajo el logo: pac + 3 fantasmas marchando a la derecha con wakka y
+// alternancia A/B (con SCALE_2 son 32x32; envuelven en 256 px)
+void DrawParade()
+{
+	g_GhAnim++;
+	u8 alt = (g_GhAnim >> 3) & 1;
+	u8 px = (u8)(g_Frame << 1);
+	u8 phase = (u8)(g_Frame >> 1) & 3;
+	u8 shape = SH_CLOSED;
+	if (phase == 2)
+		shape = SH_OPEN_R;
+	else if (phase & 1)
+		shape = SH_HALF;   // HALF_R
+	VDP_SetSpritePattern(SPRT_PAC, shape);
+	VDP_SetSpritePosition(SPRT_PAC, px, 140);
+	for (u8 i = 0; i < NUM_GHOSTS; ++i)
+	{
+		VDP_SetSpritePattern(SPRT_GHOST + i, alt ? (SH_GHOST + 4) : SH_GHOST);
+		VDP_SetSpritePosition(SPRT_GHOST + i, (u8)(px - 28 - i * 28), 140);
+	}
+}
+
+//=============================================================================
 // MAQUINA DE ESTADOS
 //=============================================================================
 
@@ -1293,6 +1350,38 @@ void EnterState(u8 s)
 	g_State = s;
 	switch (s)
 	{
+	case ST_TITLE:
+		// Laberinto de attract con semilla FIJA (tests deterministas) y tema 0
+		g_CameraX = 0;
+		VDP_SetHorizontalOffset(0);
+		ApplyTheme(0);
+		Math_SetRandomSeed8(0x37);
+		GenerateMaze();
+		PlaceDots();
+		PlacePellets();
+		BuildTileMap();
+		InitScroll();
+		// Banda limpia + textos por Print (SOLO aqui: camara garantizada en 0)
+		ClearTextRow(12);
+		ClearTextRow(14);
+		Print_SetTextFont(g_Font_Carwar, 128);   // tiles 128..190: sin colision
+		Print_SetColor(0xF, 0x0);
+		Print_DrawTextAt(9, 12, "PUSH SPACE KEY");
+		Print_DrawTextAt(9, 14, "HI-SCORE ");
+		PrintHiScore();
+		if (g_HasFM)
+			Print_DrawTextAt(28, 22, "FM");      // diagnostico barato del YM2413
+		// Logo con letras-sprite a doble escala. El flag MAG es GLOBAL (R#1):
+		// el HUD se oculta y el desfile tambien queda a 32x32 (deseado)
+		HideSprites(SPRT_DIGIT, SPRT_LIFE + 2);
+		VDP_SetSpriteFlag(VDP_SPRITE_SIZE_16 | VDP_SPRITE_SCALE_2);
+		for (u8 i = 0; i < 7; ++i)
+			VDP_SetSpriteExUniColor(SPRT_LETTER + i, g_LogoX[i], 48, g_LogoShapes[i], COLOR_WHITE);
+		VDP_HideSprite(SPRT_LETTER + 7);         // resto de OVER si venimos de GAMEOVER
+		for (u8 i = 0; i < NUM_GHOSTS; ++i)
+			VDP_SetSpriteUniColor(SPRT_GHOST + i, g_GhColor[i]);
+		break;
+
 	case ST_READY:
 		g_StateTimer = 120;
 		ShowLetterRow(SPRT_LETTER, g_ReadyShapes, 6, 88, 100);
@@ -1395,51 +1484,35 @@ void UpdateGameOver(u8 spaceEdge)
 		ShowValue4(g_AltShow ? g_HiScore : g_Score);
 	}
 	if (spaceEdge && (g_StateTimer >= 60))
+		EnterState(ST_TITLE);
+}
+
+// Parpadeo de "PUSH SPACE KEY" cada 32 frames y arranque de partida
+void UpdateTitle(u8 spaceEdge)
+{
+	if (spaceEdge)
+	{
+		// Restaurar la escala normal ANTES de entrar en READY; el InitScroll
+		// de NewGame/NextLevel re-vuelca las 32 columnas y borra el texto solo
+		VDP_SetSpriteFlag(VDP_SPRITE_SIZE_16 | VDP_SPRITE_SCALE_1);
+		HideSprites(SPRT_LETTER, SPRT_LETTER + 7);
 		NewGame();
-}
-
-//=============================================================================
-// PANTALLA DE DEBUG (SCREEN 0) — muestra tipo de MSX y audio FM detectado
-//=============================================================================
-
-void WaitSpace()
-{
-	while (Keyboard_IsKeyPressed(KEY_SPACE)) { Halt(); }
-	while (!Keyboard_IsKeyPressed(KEY_SPACE)) { Halt(); }
-	while (Keyboard_IsKeyPressed(KEY_SPACE)) { Halt(); }
-}
-
-void DebugScreen()
-{
-	VDP_SetMode(VDP_MODE_SCREEN0);
-	VDP_FillVRAM_16K(0, 0x0000, 0x4000);
-
-	Print_SetTextFont(g_Font_MGL_Sample6, 1);
-	Print_SetColor(0x0F, 0x00);
-
-	Print_DrawTextAt(6, 4, "MSX COCO - DEBUG");
-
-	Print_DrawTextAt(4, 8, "MSX TYPE: ");
-	switch (Sys_GetMSXVersion())
-	{
-	case 0:  Print_DrawText("MSX1");     break;
-	case 1:  Print_DrawText("MSX2");     break;
-	case 2:  Print_DrawText("MSX2+");    break;
-	case 3:  Print_DrawText("TURBO R");  break;
-	default: Print_DrawText("UNKNOWN");  break;
+		return;
 	}
-
-	Print_DrawTextAt(4, 10, "FM AUDIO: ");
-	switch (g_FMType)
+	if ((g_Frame & 31) == 0)
 	{
-	case MSXMUSIC_INTERNAL: Print_DrawText("INTERNAL"); break;
-	case MSXMUSIC_EXTERNAL: Print_DrawText("FM-PAC");   break;
-	default:                Print_DrawText("NONE (PSG)"); break;
+		if (g_Frame & 32)
+		{
+			// Borrado barato: 14 pokes de T_PATH bajo el texto
+			u16 dst = g_ScreenLayoutLow + 12 * SCREEN_TILE_W + 9;
+			for (u8 x = 0; x < 14; ++x)
+				VDP_Poke_16K(T_PATH, dst++);
+		}
+		else
+		{
+			Print_DrawTextAt(9, 12, "PUSH SPACE KEY");
+		}
 	}
-
-	Print_DrawTextAt(4, 20, "PRESS SPACE TO START");
-
-	WaitSpace();
 }
 
 //=============================================================================
@@ -1452,8 +1525,6 @@ void main()
 
 	g_FMType = MSXMusic_Initialize();
 	g_HasFM  = (g_FMType != MSXMUSIC_NOTFOUND);
-
-	DebugScreen();
 
 	VDP_SetMode(VDP_MODE_GRAPHIC3);
 	VDP_SetLayoutTable(0x3800);
@@ -1512,7 +1583,7 @@ void main()
 	PSG_SetVolume(PSG_CHANNEL_C, 0);
 	PSG_Apply();
 
-	NewGame();
+	EnterState(ST_TITLE);
 
 	// Bucle principal unico, frame-driven (cartucho ROM: no se sale jamas).
 	// Fase VRAM justo tras el Halt (V-Blank), fase logica despues.
@@ -1522,6 +1593,9 @@ void main()
 		// ---- fase VRAM ----
 		switch (g_State)
 		{
+		case ST_TITLE:
+			DrawParade();
+			break;
 		case ST_READY:
 		case ST_PLAY:
 			UpdateScroll();
@@ -1542,6 +1616,9 @@ void main()
 		g_PrevSpace = space;
 		switch (g_State)
 		{
+		case ST_TITLE:
+			UpdateTitle(spaceEdge);
+			break;
 		case ST_READY:
 			if (--g_StateTimer == 0)
 				EnterState(ST_PLAY);
