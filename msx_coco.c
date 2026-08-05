@@ -33,37 +33,136 @@
 #define CAM_CENTER    ((SCREEN_W / 2) - (CELL / 2)) // 120
 
 //=============================================================================
-// TILES
+// TILES — bloque unico de indices (DESIGN_v020 1.1). Todo el codigo usa estos
+// defines, nunca numeros magicos: reindexar aqui basta.
 //=============================================================================
 
 #define T_PATH        0
-#define T_WALL        1
+#define T_WALL        1   // +mask 0..15 -> 1..16 (bit0=N bit1=E bit2=S bit3=W; bit = vecino camino)
+#define T_CNW         17  // esquina interior: diagonal NW es camino
+#define T_CNE         18
+#define T_CSW         19
+#define T_CSE         20
 // Punto centrado en la celda: 4 cuartos, uno por sub-tile, cada uno en la
 // esquina que toca el CENTRO de la celda. Juntos forman un punto redondo 6x6.
-#define T_DOT_TL      2   // sub-tile sup-izq -> dot en su esquina INF-DER
-#define T_DOT_TR      3   // sub-tile sup-der -> dot en su esquina INF-IZQ
-#define T_DOT_BL      4   // sub-tile inf-izq -> dot en su esquina SUP-DER
-#define T_DOT_BR      5   // sub-tile inf-der -> dot en su esquina SUP-IZQ
+#define T_DOT_TL      21  // sub-tile sup-izq -> dot en su esquina INF-DER
+#define T_DOT_TR      22  // sub-tile sup-der -> dot en su esquina INF-IZQ
+#define T_DOT_BL      23  // sub-tile inf-izq -> dot en su esquina SUP-DER
+#define T_DOT_BR      24  // sub-tile inf-der -> dot en su esquina SUP-IZQ
+// Power pellet: circulo de 12 px repartido en los 4 sub-tiles de la celda
+#define T_PEL_TL      25
+#define T_PEL_TR      26
+#define T_PEL_BL      27
+#define T_PEL_BR      28
+#define NUM_TILES     29
 
-const u8 g_TilePattern[6 * 8] =
+// Mascaras de arista de pared (espacio de CELDA, no de tile)
+#define WM_N          1
+#define WM_E          2
+#define WM_S          4
+#define WM_W          8
+
+// ---- generado por tools/genwalls.py (no editar a mano) ----
+const u8 g_TilePattern[29 * 8] =
 {
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0: pasillo
-	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // 1: pared
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x07, 0x06, // 2: dot esquina INF-DER (cols 5-7, filas 5-7)
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0xE0, 0x60, // 3: dot esquina INF-IZQ (cols 0-2, filas 5-7)
-	0x06, 0x07, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, // 4: dot esquina SUP-DER (cols 5-7, filas 0-2)
-	0x60, 0xE0, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, // 5: dot esquina SUP-IZQ (cols 0-2, filas 0-2)
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0: T_PATH
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 1: T_WALL+0 (interior)
+	0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 2: T_WALL+1 (N)
+	0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, // 3: T_WALL+2 (E)
+	0xFF, 0xFF, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, // 4: T_WALL+3 (NE)
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, // 5: T_WALL+4 (S)
+	0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, // 6: T_WALL+5 (NS)
+	0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xFF, // 7: T_WALL+6 (ES)
+	0xFF, 0xFF, 0x03, 0x03, 0x03, 0x03, 0xFF, 0xFF, // 8: T_WALL+7 (NES)
+	0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, // 9: T_WALL+8 (W)
+	0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, // 10: T_WALL+9 (NW)
+	0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, // 11: T_WALL+10 (EW)
+	0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, // 12: T_WALL+11 (NEW)
+	0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xFF, 0xFF, // 13: T_WALL+12 (SW)
+	0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0, 0xFF, 0xFF, // 14: T_WALL+13 (NSW)
+	0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, // 15: T_WALL+14 (ESW)
+	0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, // 16: T_WALL+15 (NESW)
+	0xC0, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 17: T_CNW
+	0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 18: T_CNE
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0, // 19: T_CSW
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x03, // 20: T_CSE
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x07, 0x06, // 21: T_DOT_TL
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0xE0, 0x60, // 22: T_DOT_TR
+	0x06, 0x07, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, // 23: T_DOT_BL
+	0x60, 0xE0, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, // 24: T_DOT_BR
+	0x00, 0x00, 0x03, 0x0F, 0x1F, 0x3F, 0x3F, 0x3F, // 25: T_PEL_TL
+	0x00, 0x00, 0xC0, 0xF0, 0xF8, 0xFC, 0xFC, 0xFC, // 26: T_PEL_TR
+	0x3F, 0x3F, 0x3F, 0x1F, 0x0F, 0x03, 0x00, 0x00, // 27: T_PEL_BL
+	0xFC, 0xFC, 0xFC, 0xF8, 0xF0, 0xC0, 0x00, 0x00, // 28: T_PEL_BR
 };
 
-const u8 g_TileColor[6 * 8] =
+const u8 g_TileColor[29 * 8] =
 {
-	0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, // 0: negro
-	0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, // 1: azul
-	0x11, 0x11, 0x11, 0x11, 0x11, 0xB1, 0xB1, 0xB1, // 2: amarillo en filas 5-7
-	0x11, 0x11, 0x11, 0x11, 0x11, 0xB1, 0xB1, 0xB1, // 3: amarillo en filas 5-7
-	0xB1, 0xB1, 0xB1, 0x11, 0x11, 0x11, 0x11, 0x11, // 4: amarillo en filas 0-2
-	0xB1, 0xB1, 0xB1, 0x11, 0x11, 0x11, 0x11, 0x11, // 5: amarillo en filas 0-2
+	0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, // 0: T_PATH
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 1: T_WALL+0 (interior)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 2: T_WALL+1 (N)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 3: T_WALL+2 (E)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 4: T_WALL+3 (NE)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 5: T_WALL+4 (S)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 6: T_WALL+5 (NS)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 7: T_WALL+6 (ES)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 8: T_WALL+7 (NES)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 9: T_WALL+8 (W)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 10: T_WALL+9 (NW)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 11: T_WALL+10 (EW)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 12: T_WALL+11 (NEW)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 13: T_WALL+12 (SW)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 14: T_WALL+13 (NSW)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 15: T_WALL+14 (ESW)
+	0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, 0x32, // 16: T_WALL+15 (NESW)
+	0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, // 17: T_CNW
+	0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, // 18: T_CNE
+	0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, // 19: T_CSW
+	0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, 0x82, // 20: T_CSE
+	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, // 21: T_DOT_TL
+	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, // 22: T_DOT_TR
+	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, // 23: T_DOT_BL
+	0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, 0x61, // 24: T_DOT_BR
+	0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, // 25: T_PEL_TL
+	0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, // 26: T_PEL_TR
+	0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, // 27: T_PEL_BL
+	0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, // 28: T_PEL_BR
 };
+// ---- fin del bloque generado por tools/genwalls.py ----
+
+//=============================================================================
+// PALETA — base fija + entradas temadas por nivel (DESIGN_v020 1.5)
+//=============================================================================
+
+// Entradas 1..15. Reservadas para sprites/fondo: 1 negro, 4 azul frightened,
+// 7 cian Inky, 9 rojo Blinky, 11 amarillo pac, 13 rosa Pinky, 15 blanco.
+// Fijas de juego: 6 dorado dots, 5 pellet (CICLADA por puerto, cero VRAM).
+// Temadas por nivel: 2 relleno pared, 3 contorno, 8 acento esquinas.
+const u16 g_BasePal[15] =
+{
+	RGB16(0, 0, 0), // 1  negro (fondo)
+	RGB16(0, 0, 3), // 2  relleno pared (tema 0)
+	RGB16(2, 4, 7), // 3  contorno pared (tema 0)
+	RGB16(1, 1, 7), // 4  azul oscuro = frightened
+	RGB16(7, 4, 1), // 5  pellet (arranca brillante)
+	RGB16(6, 4, 0), // 6  dorado dots
+	RGB16(2, 6, 7), // 7  cian (Inky)
+	RGB16(4, 6, 7), // 8  acento esquinas (tema 0)
+	RGB16(7, 3, 3), // 9  rojo claro (Blinky)
+	RGB16(6, 6, 1), // 10 default MSX2 (reserva)
+	RGB16(6, 6, 4), // 11 amarillo (pac)
+	RGB16(1, 4, 1), // 12 default MSX2 (reserva)
+	RGB16(6, 2, 5), // 13 magenta/rosa (Pinky)
+	RGB16(5, 5, 5), // 14 default MSX2 (reserva)
+	RGB16(7, 7, 7), // 15 blanco (HUD/letras/flash)
+};
+
+const u16 g_ThemeFill[4]   = { RGB16(0, 0, 3), RGB16(0, 2, 1), RGB16(2, 0, 1), RGB16(1, 0, 3) };
+const u16 g_ThemeEdge[4]   = { RGB16(2, 4, 7), RGB16(1, 6, 3), RGB16(6, 2, 2), RGB16(4, 2, 7) };
+const u16 g_ThemeAccent[4] = { RGB16(4, 6, 7), RGB16(4, 7, 5), RGB16(7, 4, 3), RGB16(6, 4, 7) };
+
+#define PEL_BRIGHT    RGB16(7, 4, 1)
+#define PEL_DIM       RGB16(3, 1, 0)
 
 //=============================================================================
 // SPRITES (16x16) — orden de cuadrantes TL,BL,TR,BR (tools/genpac.py)
@@ -151,7 +250,8 @@ u8  g_DigSprt[4];  // 4 sprites de digito del marcador (indices 2..5)
 u16 g_CameraX;     // posicion de camara en el mundo (px), 0..MAX_SCROLL
 u16 g_DrawnLeft;   // columna de tile del mundo en el borde izquierdo del name table
 
-u8  g_Level;       // nivel actual (varia la semilla del laberinto)
+u8  g_Level;       // nivel actual (varia la semilla del laberinto y el tema)
+u16 g_Frame;       // contador global de frames (skips de fantasma, ciclos de paleta)
 
 u8  g_SfxTimer;    // frames restantes del SFX de comer (0 = sin sonido)
 u16 g_SfxTone;     // periodo de tono actual del SFX
@@ -170,6 +270,39 @@ bool IsWallCell(u8 cx, u8 cy)
 	if ((cx >= MAZE_COLS) || (cy >= MAZE_ROWS))
 		return TRUE;
 	return g_MazeData[(u16)cy * MAZE_COLS + cx] != 0;
+}
+
+// Fuera de mapa = pared -> false (el borde exterior no dibuja contorno).
+// Los cx-1/cy-1 con u8 envuelven a 255 y caen en el chequeo de rango.
+bool IsPathCell(u8 cx, u8 cy)
+{
+	return !IsWallCell(cx, cy);
+}
+
+//=============================================================================
+// PALETA
+//=============================================================================
+
+void InitPalette()
+{
+	VDP_SetPalette((const u8*)g_BasePal);
+}
+
+// Reescribe las 3 entradas temadas (relleno/contorno/acento) segun nivel % 4
+void ApplyTheme(u8 level)
+{
+	u8 t = level & 3;
+	VDP_SetPaletteEntry(2, g_ThemeFill[t]);
+	VDP_SetPaletteEntry(3, g_ThemeEdge[t]);
+	VDP_SetPaletteEntry(8, g_ThemeAccent[t]);
+}
+
+// Parpadeo del power pellet ciclando la entrada 5: 2 escrituras de puerto cada
+// 8 frames, cero VRAM (todos los tiles de pellet comparten el indice 5)
+void CyclePellet()
+{
+	if ((g_Frame & 7) == 0)
+		VDP_SetPaletteEntry(5, (g_Frame & 8) ? PEL_BRIGHT : PEL_DIM);
 }
 
 // Genera un laberinto aleatorio con conectividad garantizada por construccion:
@@ -219,25 +352,44 @@ void PlaceDots()
 	}
 }
 
+// Auto-tiling de paredes (DESIGN_v020 1.2/1.3): cada sub-tile de una celda de
+// pared solo puede tener contorno en sus DOS lados exteriores, elegido por la
+// mascara de vecinos-camino en espacio de celda. Sub-tile interior (mascara
+// efectiva 0) con diagonal exterior camino -> tile de esquina. Coste: solo en
+// generacion de nivel, cero por-frame.
 void BuildTileMap()
 {
 	for (u8 cy = 0; cy < MAZE_ROWS; ++cy)
 	{
 		for (u8 cx = 0; cx < MAZE_COLS; ++cx)
 		{
-			u8  t = IsWallCell(cx, cy) ? T_WALL : T_PATH;
 			u16 base = ((u16)(cy * 2)) * TILE_COLS + (cx * 2);
-			g_TileMap[base]                 = t;
-			g_TileMap[base + 1]             = t;
-			g_TileMap[base + TILE_COLS]     = t;
-			g_TileMap[base + TILE_COLS + 1] = t;
-			// Punto centrado: 4 cuartos repartidos en los 4 sub-tiles de la celda
-			if ((t == T_PATH) && (g_DotMap[(u16)cy * MAZE_COLS + cx] != 0))
+			if (!IsWallCell(cx, cy))
 			{
-				g_TileMap[base]                 = T_DOT_TL;
-				g_TileMap[base + 1]             = T_DOT_TR;
-				g_TileMap[base + TILE_COLS]     = T_DOT_BL;
-				g_TileMap[base + TILE_COLS + 1] = T_DOT_BR;
+				u8 d = g_DotMap[(u16)cy * MAZE_COLS + cx];
+				u8 tl = T_PATH, tr = T_PATH, bl = T_PATH, br = T_PATH;
+				if (d == 1)      { tl = T_DOT_TL; tr = T_DOT_TR; bl = T_DOT_BL; br = T_DOT_BR; }
+				else if (d == 2) { tl = T_PEL_TL; tr = T_PEL_TR; bl = T_PEL_BL; br = T_PEL_BR; }
+				g_TileMap[base]                 = tl;
+				g_TileMap[base + 1]             = tr;
+				g_TileMap[base + TILE_COLS]     = bl;
+				g_TileMap[base + TILE_COLS + 1] = br;
+			}
+			else
+			{
+				u8 mN = IsPathCell(cx, cy - 1) ? WM_N : 0;
+				u8 mE = IsPathCell(cx + 1, cy) ? WM_E : 0;
+				u8 mS = IsPathCell(cx, cy + 1) ? WM_S : 0;
+				u8 mW = IsPathCell(cx - 1, cy) ? WM_W : 0;
+				u8 m;
+				m = mN | mW;
+				g_TileMap[base]                 = m ? (T_WALL + m) : (IsPathCell(cx - 1, cy - 1) ? T_CNW : T_WALL);
+				m = mN | mE;
+				g_TileMap[base + 1]             = m ? (T_WALL + m) : (IsPathCell(cx + 1, cy - 1) ? T_CNE : T_WALL);
+				m = mS | mW;
+				g_TileMap[base + TILE_COLS]     = m ? (T_WALL + m) : (IsPathCell(cx - 1, cy + 1) ? T_CSW : T_WALL);
+				m = mS | mE;
+				g_TileMap[base + TILE_COLS + 1] = m ? (T_WALL + m) : (IsPathCell(cx + 1, cy + 1) ? T_CSE : T_WALL);
 			}
 		}
 	}
@@ -392,6 +544,7 @@ void NextLevel()
 	GenerateMaze();
 	PlaceDots();
 	BuildTileMap();
+	ApplyTheme(g_Level);
 
 	// Reinicia el comecocos en la celda (1,1) (siempre camino por construccion)
 	g_PacX = CELL;
@@ -723,11 +876,14 @@ void main()
 	// nuevo slot fisico (que acabamos de reescribir con el mundo de la derecha).
 	VDP_EnableMask(TRUE);
 
-	VDP_LoadPattern_GM2(g_TilePattern, 6, 0);
-	VDP_LoadColor_GM2(g_TileColor, 6, 0);
+	VDP_LoadPattern_GM2(g_TilePattern, NUM_TILES, 0);
+	VDP_LoadColor_GM2(g_TileColor, NUM_TILES, 0);
+	InitPalette();
+	ApplyTheme(0);
 
 	// Laberinto aleatorio inicial + puntos, antes de construir el tile map
 	g_Level = 0;
+	g_Frame = 0;
 	Math_SetRandomSeed8(0x37);
 	GenerateMaze();
 	PlaceDots();
@@ -785,8 +941,10 @@ void main()
 		UpdateScroll();
 		DrawPac();
 		DrawEnemy();
+		CyclePellet();
 		SoundUpdate();
 		// Logica para el frame siguiente
+		g_Frame++;
 		ReadInput();
 		UpdatePac();
 		UpdateEnemy();
