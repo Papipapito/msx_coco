@@ -27,6 +27,7 @@ mkdir -p "$DST"
 
 echo "[+] Copiando fuentes a $DST"
 cp "$HERE"/*.c              "$DST/"
+cp "$HERE"/*.h              "$DST/"
 cp "$HERE/msxgl_config.h"   "$DST/"
 cp "$HERE/project_config.js" "$DST/"
 

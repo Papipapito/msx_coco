@@ -22,11 +22,12 @@ Solo se usan 2 tiles: `T_PATH` (0, pasillo negro) y `T_WALL` (1, pared azul).
 - Modelo de **celda lógica de 16 px** = 2×2 tiles de 8 px, para que encaje el
   sprite del comecocos (16×16) en los pasillos.
 - El mapa lógico es `g_MazeData[12][32]` (32×12 celdas = 512×192 px), `1`=pared,
-  `0`=camino. Generado por `tools/genmap.py` (muros horizontales perforados) y
-  **validado por BFS**: todas las celdas de camino son alcanzables (sin islas ni
-  trampas).
-- `BuildTileMap()` expande cada celda a 2×2 tiles en `g_TileMap[24][64]` (en RAM),
-  que es a la vez la fuente para volcar a la VRAM y para consultar colisiones.
+  `0`=camino. Se genera **proceduralmente** en tiempo de ejecución (`GenMaze()`):
+  *recursive backtracker* sobre una rejilla de 15×5 salas (celda = sala de 16 px,
+  pasillos entre salas) + lazos para crear rutas de escape. La semilla sale del
+  reloj del sistema (`g_JIFFY`), de modo que el laberinto cambia en cada partida.
+- `g_Dots[]` marca las celdas con punto comestible; `BuildTileMap()` expande cada
+  celda a 2×2 tiles en `g_TileMap[24][64]` (en RAM) usando tiles de punto centrado.
 - Colisión: `IsWallCell(cx,cy)` consulta `g_MazeData`. El movimiento solo evalúa
   giro/parada cuando la entidad está **alineada a una celda** (coordenadas múltiplo
   de 16); entre celdas avanza en línea recta. Como `velocidad` (2) divide a `CELL`
