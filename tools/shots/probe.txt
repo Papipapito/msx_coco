@@ -1,0 +1,10 @@
+MACHINE=Philips_NMS_8250  TYPE=MSX2
+  SOUND=cassetteplayer keyclick PSG
+MACHINE=Sony_HB-F1XDJ  TYPE=MSX2+
+  SOUND=cassetteplayer keyclick PSG {MSX Music}
+MACHINE=Sanyo_PHC-70FD  TYPE=MSX2+
+  SOUND=cassetteplayer keyclick PSG {MSX Music}
+MACHINE=Panasonic_FS-A1WSX  TYPE=MSX2+
+  SOUND=cassetteplayer keyclick PSG {MSX Music}
+MACHINE=Boosted_MSX2+_JP  TYPE=MSX2+
+  SOUND=cassetteplayer keyclick PSG {PSG 2} {Generic MSX-Audio DAC} {Generic MSX-Audio} {Generic MSX-Audio 8-bit DAC} {Sunrise MoonSound FM} {Sunrise MoonSound wave} {MSX Music} {Konami SCC+ Cartridge with expanded RAM}

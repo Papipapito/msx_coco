@@ -52,10 +52,18 @@ ProjModules = [ ProjName ];
 // ProjSegments = ProjName;
 
 //-- List of library modules to build (array)
-LibModules = [ "system", "bios", "vdp", "print", "input", "memory", "math" ];
+// DOS2 target: "dos" added (crt0_dos / DOS_Exit0 need the dos module; msxai2 +
+// the canonical UNAPI template both include it). Order preserved; "dos" appended.
+LibModules = [ "system", "bios", "vdp", "print", "input", "memory", "math", "psg", "msx-music", "dos" ];
 
 //-- Additional sources to be compiled and linked with the project (array)
-// AddSources = [];
+// Phase B (multiplayer): UNAPI TCP/IP asm driver compiled & linked alongside msx_coco.c.
+// build.js checks fs.existsSync('./<name>') literally -> MUST include the .asm extension.
+// DIAG: asm UNAPI sigue linkado (necesario para que Net_UdpSend/Recv/Open
+// resuelvan); el aislamiento se hace SOLO en Net_Init() (stubbed en net_udp.h)
+// para que NO se llame a tcpip_enumerate. Si la ROM arranca asi con UNAPI
+// presente, el bug esta en esa llamada concreta.
+AddSources = [ "unapi_tcp.asm" ];
 
 //-- Additional extern library to be linked with the project (array)
 // AddLibs = [];
@@ -99,10 +107,39 @@ Machine = "2P";
 //   - ROM_NEO16        .rom    NEO-16: 16 KB segments for a total of 1 MB to 64 MB
 //   - ROM_YAMANOOTO    .rom    Yamanooto: 8 KB segments for a total up to 8 MB
 //   - ROM_ASCII16X     .rom    ASCII16-X: 16 KB segments for a total up to 64 MB
-Target = "ROM_32K";
+// Phase B (HISTORICO ROM, ahora superado): se probo ROM_KONAMI (Konami4) como
+// mapper universal para UNAPI + gameplay en cartucho. En HW real (MSXnano/pico)
+// el cartucho + UNAPI tiene conflictos de slot/pagina irresolubles (el TSR UNAPI
+// conmuta su segmento en pagina 1 y oculta nuestros buffers de red). La via
+// PROBADA y estable es la de msxai2: un .com bajo MSX-DOS 2 con ForceRamAddr en
+// pagina 2. La config de ROM se conserva en project_config.rom.js por si hace
+// falta regenerar el single-player en cartucho.
+Target = "DOS2";        // .COM bajo MSX-DOS 2 (via UNAPI probada, = msxai2)
+
+//*****************************************************************************
+// DOS2 / UNAPI SETTINGS (mirror de msxai2 + plantilla canonica UNAPI)
+//*****************************************************************************
+
+// CRITICO: forzamos la RAM (codigo + datos) a empezar en $8000 (pagina 2). Asi
+// nuestros datos (g_BcastIP, buffers de red, BSS) NO caen en pagina 1
+// ($4000-$7FFF), donde el TSR UNAPI conmuta su segmento de mapper durante una
+// llamada tcpip_*. Si cayeran ahi, quedarian ocultos tras el codigo del TSR y la
+// red leeria basura. Exactamente la razon de msxai2.
+ForceRamAddr = 0x8000;
+
+// No parseamos argv via la convencion SDCC de main(argc,argv); si hiciera falta
+// linea de comandos se lee a mano. (= msxai2 / plantilla.)
+DOSParseArg = false;
+
+// Tamano del .DSK por si se genera imagen de disco (no se copia nada: DoDeploy=false).
+DiskSize = "720K";
+
+// No copiamos a floppy/disco: el .com lo recoge build.sh del directorio out/.
+DoDeploy = false;
 
 //-- ROM mapper total size in KB (number). Must be a multiple of 8 or 16 depending on the mapper type (from 64 to 4096 for legacy mappers; can be up to 65536 for NEO-16 mapper)
-// ROMSize = 128;
+// ROM-only (ignored for DOS2): commented for cleanliness.
+// ROMSize = 64;
 
 //-- Check for ROM boot skipping if a given key is pressed (boolean)
 // ROMSkipBoot = false;
@@ -122,10 +159,17 @@ Target = "ROM_32K";
 CheckVersion = true;
 
 //-- Postpone the ROM startup to let the other ROMs initialize like Disk controller or Network cartridge (boolean)
+// Phase B: let the UNAPI network cartridge's init run BEFORE our boot so tcpip_enumerate() finds it.
+// DEBUG: ROMDelayBoot causa "Unprintable error in 0" en SofaRun y reboot en
+// MSXnano. La doble pasada de boot no parece implementada igual en sus BIOSes.
+// Desactivado; UNAPI deberia detectarse igual porque EXTBIO se hookea muy pronto.
+// ROMDelayBoot = true;
+// ROM-only (ignored for DOS2): commented for cleanliness.
 // ROMDelayBoot = false;
 
 //-- Add a ROM signature to help flasher and emulator to detect the ROM type properly (boolean)
-AddROMSignature = true;
+// ROM-only (ignored for DOS2): commented for cleanliness.
+// AddROMSignature = true;
 
 //-- Select RAM in slot 0 and install ISR and optional code there (string). For MSX with at least 64 KB of RAM
 //   - RAM0_NONE       Don't install RAM in page 0 

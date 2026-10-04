@@ -1,0 +1,6 @@
+=== machine_info extension (slots) ===
+C:/Users/alber/msx_coco/msx_coco.rom fmpac
+=== list_extensions style: 'set' command sound devices ===
+{C-BIOS MSX-MUSIC} cassetteplayer keyclick PSG {Panasoft SW-M004 FMPAC}
+=== debuggables (look for MSX-Music / YM2413) ===
+{VDP palette} ioports joystickports {Printer Port} {PSG regs} {VDP status regs} {Panasoft SW-M004 FMPAC ROM} {VDP register latch status} {C-BIOS Main ROM romblocks} {C-BIOS MSX-MUSIC regs} {slotted memory} keymatrix {physical VRAM} {Panasoft SW-M004 FMPAC romblocks} {msx_coco.rom romblocks} {Panasoft SW-M004 FMPAC SRAM} {Main RAM regs} {C-BIOS Logo ROM romblocks} msx_coco.rom MapperIO {VDP palette latch status} {VDP regs} memory {Panasoft SW-M004 FMPAC regs} VRAM {C-BIOS Main ROM} {C-BIOS Sub ROM} {C-BIOS Logo ROM} {C-BIOS Sub ROM romblocks} {VDP data latch value} {CPU regs} {VRAM access status} {C-BIOS MSX-MUSIC ROM} {Main RAM} {VRAM pointer} {Real time clock SRAM}
